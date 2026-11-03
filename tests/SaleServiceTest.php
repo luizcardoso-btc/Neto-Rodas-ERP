@@ -336,4 +336,15 @@ final class SaleServiceTest extends TestCase
         $this->assertSame(350.0, $s['gross']);   // 600 - 250
         $this->assertSame(250.0, $s['profit']);  // 350 - 100 de despesa operacional (folha 0)
     }
+
+    public function testWeeklyPayrollPaymentsReduceFinalProfit(): void
+    {
+        SaleService::create($this->sale()); // receita 600
+        Database::run("INSERT INTO payroll_payments (employee, amount, week_start, paid_on) VALUES ('JOAO', 150, CURDATE(), CURDATE())");
+        Database::run("INSERT INTO payroll_payments (employee, amount, week_start, paid_on) VALUES ('MARIA', 100, CURDATE(), CURDATE())");
+        $s = \App\Finance::summary(date('Y-m-d'), date('Y-m-d'), 1);
+        $this->assertSame(250.0, $s['payroll']);
+        $this->assertSame(600.0, $s['gross']);
+        $this->assertSame(350.0, $s['profit']);
+    }
 }

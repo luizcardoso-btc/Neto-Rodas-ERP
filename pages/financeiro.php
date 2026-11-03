@@ -43,6 +43,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
             }
             flash('ok', $kind === 'imposto' ? 'Pagamento de imposto lancado.' : ($kind === 'ativo' ? 'Boleto de mercadoria lancado (abate da receita bruta).' : ($repeat > 1 ? "Despesa lancada ($repeat meses)." : 'Despesa lancada.')));
+        } elseif ($action === 'add_payroll') {
+            $amount = parse_money($_POST['amount'] ?? 0);
+            $paidOn = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['paid_on'] ?? '') ? $_POST['paid_on'] : date('Y-m-d');
+            $week = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['week_start'] ?? '') ? $_POST['week_start'] : null;
+            $sid = (int) ($_POST['seller_id'] ?? 0);
+            $name = $sid ? (string) Database::value('SELECT name FROM sellers WHERE id = ?', [$sid]) : upper((string) ($_POST['employee'] ?? ''));
+            if ($name === '' || $amount <= 0) {
+                throw new DomainException('Escolha o funcionario e informe o valor.');
+            }
+            Database::run('INSERT INTO payroll_payments (seller_id, employee, amount, week_start, paid_on) VALUES (?,?,?,?,?)', [$sid ?: null, mb_substr($name, 0, 120), $amount, $week, $paidOn]);
+            flash('ok', 'Pagamento da folha lancado.');
+        } elseif ($action === 'payroll_all') {
+            $paidOn = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['paid_on'] ?? '') ? $_POST['paid_on'] : date('Y-m-d');
+            $week = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['week_start'] ?? '') ? $_POST['week_start'] : null;
+            $n = 0;
+            foreach (Database::all('SELECT id, name, weekly_pay FROM sellers WHERE active = 1 AND weekly_pay > 0') as $sl) {
+                Database::run('INSERT INTO payroll_payments (seller_id, employee, amount, week_start, paid_on) VALUES (?,?,?,?,?)', [$sl['id'], $sl['name'], $sl['weekly_pay'], $week, $paidOn]);
+                $n++;
+            }
+            if (!$n) {
+                throw new DomainException('Nenhum vendedor com pagamento semanal cadastrado (Vendedores).');
+            }
+            flash('ok', "Folha da semana lancada para $n funcionario(s).");
+        } elseif ($action === 'delete_payroll') {
+            Database::run('DELETE FROM payroll_payments WHERE id = ?', [(int) ($_POST['id'] ?? 0)]);
+            flash('ok', 'Pagamento da folha removido.');
+        } elseif ($action === 'set_kind') {
+            $k = in_array($_POST['kind'] ?? '', ['despesa', 'ativo'], true) ? $_POST['kind'] : 'despesa';
+            Database::run("UPDATE accounts_payable SET kind = ? WHERE id = ? AND kind <> 'imposto'", [$k, (int) ($_POST['id'] ?? 0)]);
+            flash('ok', $k === 'ativo' ? 'Movido para Mercadorias (ativos): abate da receita bruta.' : 'Movido para Despesas operacionais.');
         } elseif ($action === 'add_receivable') {
             $amount = parse_money($_POST['amount'] ?? 0);
             $desc = upper((string) ($_POST['description'] ?? ''));
@@ -108,8 +138,9 @@ function fin_kpis(array $s, string $base): void
 { ?>
   <div class="fin-kpis">
     <div class="kpi"><span>Receita bruta</span><strong><?= money($s['revenue']) ?></strong><small><?= (int) $s['sales'] ?> venda(s) · ticket <?= money($s['ticket']) ?></small></div>
+    <div class="kpi"><span>Despesas de ativos</span><strong><?= money($s['assets']) ?></strong><small>boletos de pneus/rodas pagos · abate da receita bruta</small></div>
     <div class="kpi"><span>Lucro bruto</span><strong class="ok"><?= money($s['gross']) ?></strong><small>receita − mercadorias (ativos) − taxas − impostos</small></div>
-    <div class="kpi"><span>Despesas operacionais</span><strong><?= money($s['expenses'] + $s['payroll']) ?></strong><small>despesas <?= money($s['expenses']) ?> + folha <?= money($s['payroll']) ?></small></div>
+    <div class="kpi"><span>Despesas operacionais</span><strong><?= money($s['expenses'] + $s['payroll']) ?></strong><small>despesas <?= money($s['expenses']) ?> + folha semanal <?= money($s['payroll']) ?></small></div>
     <div class="kpi final <?= $s['profit'] < 0 ? 'neg' : '' ?>"><span>Lucro estimado final</span><strong class="<?= $s['profit'] < 0 ? 'neg' : 'ok' ?>"><?= money($s['profit']) ?></strong><small>margem <?= number_format($s['margin'], 1, ',', '.') ?>%</small></div>
   </div>
 <?php }
@@ -188,7 +219,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
     <div class="kpi"><span>Mercadorias pagas (ativos)</span><strong><?= money($s['assets']) ?></strong><small>abate da receita bruta, não do lucro</small></div>
     <div class="kpi"><span>Despesas operacionais pagas</span><strong><?= money($s['expenses']) ?></strong><small><?= count($cats) ?> categoria(s)</small></div>
     <div class="kpi"><span>Impostos pagos no período</span><strong class="bad"><?= money($s['taxes']) ?></strong><small>estimado: <?= money($s['tax_estimated']) ?> (<?= number_format((float) $cfg['tax_rate'], 2, ',', '.') ?>%)</small></div>
-    <div class="kpi"><span>Folha dos vendedores</span><strong><?= money($s['payroll']) ?></strong><small>proporcional ao período</small></div>
+    <div class="kpi"><span>Folha dos vendedores</span><strong><?= money($s['payroll']) ?></strong><small>pagos no período (previsto por semana: <?= money($s['weekly_total']) ?>)</small></div>
   </div>
   <div class="cols fin-cols">
     <div class="card caps"><h2>Lançar despesa</h2><p class="sub">Aluguel, energia, marketing… (mercadoria de fornecedor vai em "Boletos de mercadoria"). Marque "já paga" para entrar no lucro do período.</p>
@@ -215,9 +246,22 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
         <label class="chk"><input type="checkbox" name="paid" value="1" checked> Já paga</label>
         <button class="btn block" type="submit">Registrar imposto</button></form></div>
   </div>
+  <?php $sellersAll = Database::all('SELECT id, name, weekly_pay FROM sellers WHERE active = 1 ORDER BY name');
+  $pr = Database::all('SELECT * FROM payroll_payments WHERE paid_on >= ? AND paid_on <= ? ORDER BY paid_on DESC, id DESC LIMIT 60', [$range['from'], $range['to']]); ?>
   <div class="cols fin-cols" style="margin-top:20px">
+    <div class="card caps"><h2>Folha de pagamento (semanal)</h2><p class="sub">Lance o pagamento semanal dos funcionários. Entra nas despesas operacionais e abate do lucro final.</p>
+      <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="payroll_all"><input type="hidden" name="tab" value="despesas">
+        <div class="row c2"><div><label class="f" for="pw1">Semana iniciada em</label><input id="pw1" type="date" name="week_start" value="<?= e(date('Y-m-d', strtotime('monday this week'))) ?>"></div><div><label class="f" for="pp1">Pago em</label><input id="pp1" type="date" name="paid_on" value="<?= e(date('Y-m-d')) ?>"></div></div>
+        <button class="btn block" type="submit">Lançar semana de todos (<?= money(array_sum(array_column($sellersAll, 'weekly_pay'))) ?>)</button></form>
+      <form method="post" class="stack" style="margin-top:14px"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_payroll"><input type="hidden" name="tab" value="despesas">
+        <div class="row c2"><select name="seller_id" aria-label="Funcionário"><option value="">OUTRO FUNCIONÁRIO…</option><?php foreach ($sellersAll as $sl): ?><option value="<?= (int) $sl['id'] ?>"><?= e($sl['name']) ?></option><?php endforeach; ?></select><input name="employee" placeholder="NOME (se outro)"></div>
+        <div class="row c2"><input name="amount" inputmode="decimal" placeholder="VALOR *" required><input type="date" name="paid_on" value="<?= e(date('Y-m-d')) ?>" aria-label="Pago em"></div>
+        <button class="btn green block" type="submit">Lançar pagamento</button></form>
+      <h3 style="margin:16px 0 6px;font-size:14px">Pagos no período: <?= money($s['payroll']) ?></h3>
+      <?php foreach ($pr as $x): ?><div class="exp-row"><div><b><?= e($x['employee']) ?></b><br><span class="small muted">pago em <?= e(fmt_date($x['paid_on'])) ?><?= $x['week_start'] ? ' · semana de ' . e(fmt_date($x['week_start'])) : '' ?></span></div><b><?= money($x['amount']) ?></b><form method="post" style="margin:0" onsubmit="return confirm('Remover pagamento?')"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="delete_payroll"><input type="hidden" name="id" value="<?= (int) $x['id'] ?>"><button class="btn danger sm" type="submit">×</button></form></div><?php endforeach; ?>
+      <?php if (!$pr): ?><p class="muted">Nenhum pagamento de folha neste período.</p><?php endif; ?></div>
     <div class="card"><h2>Despesas do período</h2><p class="sub"><?= count($items) ?> lançamento(s) pago(s) entre <?= e(fmt_date($range['from'])) ?> e <?= e(fmt_date($range['to'])) ?></p>
-      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
+      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><form method="post" style="margin:0"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="set_kind"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><?php if ($i['kind'] === 'despesa'): ?><input type="hidden" name="kind" value="ativo"><button class="btn ghost sm" type="submit" title="É compra de mercadoria? Abate da receita bruta">→ mercadoria</button><?php elseif ($i['kind'] === 'ativo'): ?><input type="hidden" name="kind" value="despesa"><button class="btn ghost sm" type="submit">→ despesa</button><?php endif; ?></form><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
       <?php if (!$items): ?><p class="muted">Nenhuma despesa paga neste período.</p><?php endif; ?>
       <?php if ($cats): ?><h3 style="margin:18px 0 6px;font-size:14px">Por categoria</h3><table><tbody><?php foreach ($cats as $c): ?><tr><td><?= e($c['cat']) ?></td><td class="num"><b><?= money($c['total']) ?></b></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></div>
     <div class="card"><h2>Contas a pagar (em aberto)</h2><p class="sub">Dê baixa quando pagar: o valor passa a contar no lucro.</p><?php fin_table($ap, 'accounts_payable', false, 'despesas'); ?></div>

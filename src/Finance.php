@@ -48,7 +48,8 @@ final class Finance
         $cardBase = (float) Database::value("SELECT COALESCE(SUM(p.amount),0) FROM sale_payments p JOIN sales s ON s.id = p.sale_id WHERE p.method = 'cartao' AND p.machine_id IS NULL AND " . self::dateRange('s.created_at'), $a);
         $cardFees = round($cardReal + $cardBase * (float) $cfg['card_fee_rate'] / 100, 2);
         $weekly = (float) Database::value('SELECT COALESCE(SUM(weekly_pay),0) FROM sellers WHERE active = 1');
-        $payroll = Reports::payroll($weekly, $days);
+        $payrollEst = Reports::payroll($weekly, $days); // previsao pelo cadastro dos vendedores
+        $payroll = (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM payroll_payments WHERE paid_on >= ? AND paid_on <= ?', $a); // pagamentos semanais lancados
         $paid = fn (string $kind) => (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind = ? AND ' . self::dateRange('paid_at'), array_merge([$kind], $a));
         $expenses = $paid('despesa');
         $assets = $paid('ativo'); // boletos de mercadoria (pneus/rodas): abatem da receita bruta, nao sao despesa operacional
@@ -63,7 +64,7 @@ final class Finance
         $breakeven = $contribution > 0 ? round($fixed / $contribution, 2) : null;
 
         return [
-            'sales' => (int) $r['n'], 'revenue' => $revenue, 'cmv' => $cmv, 'assets' => $assets, 'card_fees' => $cardFees, 'payroll' => $payroll,
+            'sales' => (int) $r['n'], 'revenue' => $revenue, 'cmv' => $cmv, 'assets' => $assets, 'card_fees' => $cardFees, 'payroll' => $payroll, 'payroll_est' => $payrollEst, 'weekly_total' => $weekly,
             'expenses' => $expenses, 'taxes' => $taxes, 'creditor' => $creditor, 'gross' => $gross, 'profit' => $profit,
             'margin' => $revenue > 0 ? round($profit / $revenue * 100, 1) : 0.0,
             'ticket' => $r['n'] ? round($revenue / (int) $r['n'], 2) : 0.0,
@@ -82,7 +83,7 @@ final class Finance
             ['Compra de mercadorias (ativos)', $s['assets'], '#2f6fd6', 'boletos de pneus/rodas pagos no período'],
             ['Impostos pagos', $s['taxes'], '#f97316', 'DAS, ICMS etc. lançados como pagos'],
             ['Taxas do cartão', $s['card_fees'], '#14b8a6', 'taxa de cada máquina (amarela/azul) por parcela'],
-            ['Folha dos vendedores', $s['payroll'], '#f59e0b', 'semanal ÷ 7 × dias do período'],
+            ['Folha dos vendedores', $s['payroll'], '#f59e0b', 'pagamentos semanais lançados no período'],
             ['Despesas operacionais', $s['expenses'], '#e879a6', 'despesas pagas no período'],
         ];
         $out = [];

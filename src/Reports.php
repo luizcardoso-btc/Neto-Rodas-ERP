@@ -40,7 +40,7 @@ final class Reports
             [$p['start'], $p['end']]
         );
         $weekly = (float) Database::value('SELECT COALESCE(SUM(weekly_pay),0) FROM sellers WHERE active = 1');
-        $payroll = self::payroll($weekly, $p['elapsed']);
+        $payroll = (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM payroll_payments WHERE paid_on >= ? AND paid_on <= ?', [$p['start'], $p['end']]);
         $expenses = (float) Database::value(
             "SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind <> 'ativo' AND paid_at >= ? AND paid_at < DATE_ADD(?, INTERVAL 1 DAY)",
             [$p['start'], $p['end']]
