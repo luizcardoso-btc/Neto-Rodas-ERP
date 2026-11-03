@@ -164,7 +164,8 @@ form.caps input::placeholder{text-transform:uppercase}
 .fin-tabs,.fin-periods{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .pill{display:inline-flex;align-items:center;border-radius:999px;padding:9px 18px;font-weight:700;font-size:14px;text-decoration:none;background:#fff;color:var(--text);border:1px solid #cbd5e1}
 .pill.on,.pill.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
-.fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:20px}
+.fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.fin-kpis .kpi{padding:12px 14px}.fin-kpis .kpi span{font-size:12px}.fin-kpis .kpi strong{font-size:18px;white-space:nowrap;margin:3px 0}.fin-kpis .kpi small{font-size:11px;line-height:1.3;display:block}
 .fin-kpis .kpi.final{border:2px solid var(--brand)}.fin-kpis .kpi.final.neg{border-color:#dc2626}
 .kpi strong.neg,.neg-t{color:#dc2626}
 .alert-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
