@@ -1,0 +1,65 @@
+<?php
+declare(strict_types=1);
+
+use App\Database;
+use App\Lookup;
+use App\SaleService;
+use PHPUnit\Framework\TestCase;
+
+final class MeasureSearchTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        $pdo = Database::pdo();
+        $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+        foreach (['stock_movements', 'accounts_receivable', 'sale_payments', 'sale_items', 'sales', 'products', 'customers', 'sellers'] as $t) {
+            $pdo->exec("TRUNCATE TABLE $t");
+        }
+        $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+        $sql = file_get_contents(__DIR__ . '/../migrations/002_reference_tires.sql');
+        $pdo->exec($sql);
+        Database::run("INSERT INTO products (name, brand, width, profile, rim, price, stock) VALUES ('Pneu Pirelli sem medida', 'Pirelli', NULL, NULL, NULL, 10, 5)");
+    }
+
+    public function testSeedHasExactlyTheFifteenReferenceMeasures(): void
+    {
+        $this->assertSame(16, (int) Database::value('SELECT COUNT(*) FROM products')); // 15 + 1 de teste
+        Database::pdo()->exec(file_get_contents(__DIR__ . '/../migrations/002_reference_tires.sql')); // idempotente
+        $this->assertSame(16, (int) Database::value('SELECT COUNT(*) FROM products'));
+    }
+
+    public function testSearchByDifferentMeasureFormats(): void
+    {
+        foreach (['175/65 R14', '175 65 14', '1756514', '175/65r14'] as $q) {
+            $r = Lookup::products($q);
+            $this->assertCount(1, $r, $q);
+            $this->assertSame('175/65 R14', $r[0]['label']);
+        }
+        $this->assertGreaterThanOrEqual(2, count(Lookup::products('R18')));
+        $this->assertCount(1, Lookup::products('275'));
+    }
+
+    public function testFreeTextAndProductsWithoutMeasureAreNotReturned(): void
+    {
+        $this->assertSame([], Lookup::products('pirelli'));
+        $this->assertSame([], Lookup::products('pneu'));
+        $this->assertSame([], Lookup::products('7'));
+        $this->assertCount(2, Lookup::products('17')); // so o aro (R17) e busca valida
+    }
+
+    public function testTradeInBecomesUsedTireSearchableByMeasure(): void
+    {
+        $pid = (int) Database::value("SELECT id FROM products WHERE width='175' AND profile='65'");
+        Database::run('UPDATE products SET stock = 4, price = 300 WHERE id = ?', [$pid]);
+        SaleService::create([
+            'request_token' => uuid4(),
+            'items' => [['product_id' => $pid, 'quantity' => 1, 'unit_price' => 300.0]],
+            'payments' => [['method' => 'dinheiro', 'amount' => 200.0], ['method' => 'troca', 'amount' => 100.0, 'note' => '2 pneus 185/65 R15 usados', 'trade_qty' => 2]],
+        ]);
+        $used = Lookup::products('185/65 R15');
+        $usedRow = array_values(array_filter($used, fn ($r) => $r['condition_type'] === 'usado'));
+        $this->assertCount(1, $usedRow);
+        $this->assertSame(2, $usedRow[0]['stock']);
+        $this->assertSame('50.00', Database::value("SELECT cost_price FROM products WHERE condition_type='usado'"));
+    }
+}

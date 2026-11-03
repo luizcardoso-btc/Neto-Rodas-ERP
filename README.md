@@ -83,3 +83,8 @@ O Railway entrega gratis um endereco `https://nome.up.railway.app`. O projeto ja
 6. **Settings > Networking > Generate Domain**, abra o endereco e entre com `admin` e a senha do passo 4.
 
 Como funciona: o servidor web sobe imediatamente; em segundo plano o sistema espera o banco, aplica as migracoes e cria o admin (so se ainda nao existir usuario). Se o banco nao estiver configurado, o site mostra uma pagina explicando o que falta, em vez de erro generico. Depois do primeiro acesso, apague `ADMIN_PASSWORD`. Atualizar = `git push` na `main`.
+
+### Senha do administrador
+
+- A cada inicializacao, se `ADMIN_PASSWORD` estiver definida, o usuario `ADMIN_USER` e criado ou tem a senha ajustada para esse valor. Basta mudar as variaveis e aguardar o deploy.
+- Depois de entrar, **remova `ADMIN_PASSWORD`** das variaveis. Sem ela, nada e sobrescrito e a senha trocada no menu **Minha senha** (minimo 8 caracteres) continua valendo.
