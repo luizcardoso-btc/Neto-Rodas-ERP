@@ -41,9 +41,11 @@ try {
             continue;
         }
         if (!$isService && !$it['product_id']) {
-            throw new DomainException($it['category'] === 'roda'
+            throw new DomainException($it['category'] === 'parafuso'
+                ? 'Escolha o jogo de parafusos na lista.'
+                : ($it['category'] === 'roda'
                 ? 'Escolha a roda: busque pelo nome/aro e selecione na lista.'
-                : 'Escolha o pneu pela medida: busque (ex.: 175/65 R14) e selecione na lista.');
+                : 'Escolha o pneu pela medida: busque (ex.: 175/65 R14) e selecione na lista.'));
         }
         if ($isService) {
             $it['product_id'] = null;

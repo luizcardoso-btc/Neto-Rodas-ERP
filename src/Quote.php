@@ -8,7 +8,7 @@ use DomainException;
 /** Orcamentos personalizados da loja: gravacao, calculo, PDF e link de WhatsApp. */
 final class Quote
 {
-    public const CATEGORIES = ['pneu' => 'Pneus', 'roda' => 'Roda', 'servico' => 'Serviços'];
+    public const CATEGORIES = ['pneu' => 'Pneus', 'roda' => 'Roda', 'parafuso' => 'Parafusos', 'servico' => 'Serviços'];
 
     /**
      * @param array<string,mixed> $d

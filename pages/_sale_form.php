@@ -17,7 +17,7 @@ $quoteId = (int) ($old['quote_id'] ?? 0);
 $token = $old['request_token'] ?? uuid4();
 $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
 ?>
-<form method="post" id="sale-form" class="caps" data-lookup="<?= e($lookupBase) ?>" data-creditor="<?= e(App\Settings::all()['creditor_name']) ?>" data-old="<?= e(json_encode($old, JSON_UNESCAPED_UNICODE) ?: 'null') ?>" novalidate>
+<form method="post" id="sale-form" class="caps" data-lookup="<?= e($lookupBase) ?>" data-finishes="<?= e(json_encode(App\Wheel::FINISHES)) ?>" data-brands="<?= e(json_encode(App\Wheel::brands())) ?>" data-rims="<?= e(json_encode([App\Wheel::RIM_MIN, App\Wheel::RIM_MAX])) ?>" data-creditor="<?= e(App\Settings::all()['creditor_name']) ?>" data-old="<?= e(json_encode($old, JSON_UNESCAPED_UNICODE) ?: 'null') ?>" novalidate>
   <?= App\Csrf::field() ?>
   <input type="hidden" name="action" value="sale">
   <input type="hidden" name="request_token" value="<?= e($token) ?>">

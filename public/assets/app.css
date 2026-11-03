@@ -288,3 +288,6 @@ body{background:#f6f6f4}
 .xpbar{height:8px;background:#eee;border-radius:99px;overflow:hidden;margin-bottom:4px}.xpbar i{display:block;height:100%;border-radius:99px}
 .rk-nums{text-align:right}.rk-nums b{display:block;font-size:17px}.rk-nums small{color:var(--muted);font-size:12px}
 @media(max-width:700px){.rk-row{grid-template-columns:36px 1fr}.rk-nums{grid-column:2;text-align:left}.podium{gap:6px}}
+
+.pill .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}.pill .dot.greend{background:#16a34a}.pill .dot.redd{background:#dc2626}
+.pill b{margin-left:6px;opacity:.7}

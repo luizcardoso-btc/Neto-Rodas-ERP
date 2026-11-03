@@ -17,6 +17,9 @@ final class Lookup
         if ($category === 'roda') {
             return self::wheels($q);
         }
+        if ($category === 'parafuso') {
+            return self::bolts($q);
+        }
         $where = "active = 1 AND category = 'pneu' AND COALESCE(width,'') <> '' AND COALESCE(profile,'') <> '' AND COALESCE(rim,'') <> ''";
         if (preg_match('/^\s*r?\s*(\d{2})\s*$/i', $q, $m)) {
             $where .= ' AND rim = ?';
@@ -41,21 +44,41 @@ final class Lookup
         return $rows;
     }
 
-    /** Rodas: busca por nome, marca, modelo, codigo ou aro (ex.: "aro 15", "BBS"). @return list<array<string,mixed>> */
+    /** Rodas (vendidas por JOGO). Sem texto, lista todos: novos primeiro, com estoque primeiro. Busca por marca, aro ou acabamento. @return list<array<string,mixed>> */
     public static function wheels(string $q): array
     {
         $q = trim($q);
-        if (mb_strlen($q) < 2) {
-            return [];
+        $where = "active = 1 AND category = 'roda'";
+        $args = [];
+        if ($q !== '') {
+            $like = '%' . addcslashes($q, '%_\\') . '%';
+            $rim = preg_match('/^\s*(?:aro\s*|r\s*)?(\d{2})\s*$/i', $q, $m) ? $m[1] : '';
+            $where .= " AND (CONCAT_WS(' ', name, brand, model, mpn, description) LIKE ?" . ($rim !== '' ? ' OR rim = ?' : '') . ')';
+            $args = $rim !== '' ? [$like, $rim] : [$like];
         }
-        $like = '%' . addcslashes($q, '%_\\') . '%';
-        $rim = preg_match('/^\s*(?:aro\s*|r\s*)?(\d{2})\s*$/i', $q, $m) ? $m[1] : '';
+        return self::catalog($where, $args);
+    }
+
+    /** Jogo de parafusos (16 unidades). Sem texto, lista todos. @return list<array<string,mixed>> */
+    public static function bolts(string $q): array
+    {
+        $q = trim($q);
+        $where = "active = 1 AND category = 'parafuso'";
+        $args = [];
+        if ($q !== '') {
+            $where .= " AND CONCAT_WS(' ', name, brand, model, description) LIKE ?";
+            $args = ['%' . addcslashes($q, '%_\\') . '%'];
+        }
+        return self::catalog($where, $args);
+    }
+
+    /** @return list<array<string,mixed>> */
+    private static function catalog(string $where, array $args): array
+    {
         $rows = Database::all(
             "SELECT id, name, price, stock, condition_type, location FROM products
-             WHERE active = 1 AND category = 'roda'
-               AND (CONCAT_WS(' ', name, brand, model, mpn, description) LIKE ?" . ($rim !== '' ? ' OR rim = ?' : '') . ')
-             ORDER BY (stock > 0) DESC, name, condition_type LIMIT 15',
-            $rim !== '' ? [$like, $rim] : [$like]
+             WHERE $where ORDER BY (condition_type = 'novo') DESC, (stock > 0) DESC, name LIMIT 30",
+            $args
         );
         foreach ($rows as &$r) {
             $r['label'] = $r['name'];
@@ -69,7 +92,8 @@ final class Lookup
         $kind = (string) ($_GET['lookup'] ?? '');
         $q = trim((string) ($_GET['q'] ?? ''));
         header('Content-Type: application/json; charset=utf-8');
-        if (mb_strlen($q) < 2) {
+        $listAll = $kind === 'product' && in_array((string) ($_GET['cat'] ?? ''), ['roda', 'parafuso'], true); // lista completa sem digitar
+        if (mb_strlen($q) < 2 && !$listAll) {
             echo '[]';
             exit;
         }

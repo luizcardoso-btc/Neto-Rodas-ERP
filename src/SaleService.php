@@ -13,7 +13,7 @@ use PDOException;
 final class SaleService
 {
     public const METHODS = ['dinheiro', 'pix', 'cartao', 'prazo', 'troca'];
-    public const ITEM_CATEGORIES = ['pneu' => 'Pneus', 'roda' => 'Roda', 'servico' => 'Servicos'];
+    public const ITEM_CATEGORIES = ['pneu' => 'Pneus', 'roda' => 'Roda', 'parafuso' => 'Parafusos', 'servico' => 'Servicos'];
     public const TRADE_CATEGORIES = ['pneu' => 'Pneu usado', 'roda' => 'Roda usada'];
     public const ADDRESS_FIELDS = ['street' => 'logradouro', 'number' => 'numero', 'district' => 'bairro', 'city' => 'cidade', 'state' => 'UF', 'zip' => 'CEP'];
 
@@ -631,6 +631,9 @@ final class SaleService
     {
         $note = (string) $note;
         if ($category === 'roda') {
+            if (preg_match('/^(.+?)\s+R(\d{2})\s+-\s+(.+)$/u', trim($note), $m)) { // padrao: MARCA R18 - ACABAMENTO
+                return [self::clip('JOGO DE RODA USADA ' . trim($note), 200), null, null, $m[2]];
+            }
             return [self::clip('RODA USADA - ' . $note, 200), null, null, preg_match('/\bARO\s*(\d{2})\b|\bR\s?(\d{2})\b/i', $note, $m) ? ($m[1] ?: $m[2]) : null];
         }
         if (preg_match('/(\d{3})\s*[\/x]\s*(\d{2})\s*(?:z?r)?\s*(\d{2})/i', $note, $m)) {

@@ -195,7 +195,7 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
   const brl = (c) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const el = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstChild; };
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-  const PH = { pneu: 'MEDIDA (EX.: 175/65 R14) - BUSCA NO ESTOQUE', roda: 'RODA (NOME, MARCA OU ARO) - BUSCA NO ESTOQUE', servico: 'DESCRICAO DO SERVICO' };
+  const PH = { pneu: 'MEDIDA (EX.: 175/65 R14) - BUSCA NO ESTOQUE', roda: 'CLIQUE E ESCOLHA O JOGO DE RODA', parafuso: 'CLIQUE E ESCOLHA O JOGO DE PARAFUSOS', servico: 'DESCRICAO DO SERVICO' };
   let n = 0;
   async function find(kind, q, cat) { const r = await fetch(lookup + kind + '&q=' + encodeURIComponent(q) + (cat ? '&cat=' + cat : ''), { credentials: 'same-origin' }); return r.ok ? r.json() : []; }
   function calc() {
@@ -216,21 +216,24 @@ if (isset($_GET['new']) || isset($_GET['edit'])) {
   function add(d = {}) {
     const i = n++, cat = PH[d.category] ? d.category : 'pneu';
     const line = el(`<div class="item-line"><div class="grid cat-grid">
-      <select name="items[${i}][category]" class="cat-sel"><option value="pneu" ${cat === 'pneu' ? 'selected' : ''}>Pneus</option><option value="roda" ${cat === 'roda' ? 'selected' : ''}>Roda</option><option value="servico" ${cat === 'servico' ? 'selected' : ''}>Servicos</option></select>
+      <select name="items[${i}][category]" class="cat-sel"><option value="pneu" ${cat === 'pneu' ? 'selected' : ''}>Pneus</option><option value="roda" ${cat === 'roda' ? 'selected' : ''}>Roda (jogo)</option><option value="parafuso" ${cat === 'parafuso' ? 'selected' : ''}>Parafusos (jogo 16 un.)</option><option value="servico" ${cat === 'servico' ? 'selected' : ''}>Servicos</option></select>
       <div class="suggest"><input name="items[${i}][description]" autocomplete="off" value="${esc(d.description)}"><ul hidden></ul></div>
       <input name="items[${i}][quantity]" type="number" min="1" placeholder="QTD." value="${esc(d.quantity || 1)}">
       <input name="items[${i}][unit_price]" inputmode="decimal" placeholder="PRECO UNITARIO" value="${esc(d.unit_price)}"></div>
       <div class="line-foot"><span class="small muted"></span><button type="button" class="rm" style="color:var(--danger)">Remover</button></div></div>`);
     const sel = line.querySelector('.cat-sel'), desc = line.querySelector('.suggest input'), list = line.querySelector('ul'), price = line.querySelector('[name$="[unit_price]"]');
-    const ph = () => { desc.placeholder = PH[sel.value]; }; ph(); sel.onchange = () => { ph(); list.hidden = true; };
-    desc.addEventListener('input', debounce(async () => {
+    const ph = () => { desc.placeholder = PH[sel.value]; }; ph(); sel.onchange = () => { ph(); list.hidden = true; desc.value = ''; if (sel.value === 'roda' || sel.value === 'parafuso') desc.focus(); };
+    const ALL = () => sel.value === 'roda' || sel.value === 'parafuso';
+    const run = async () => {
       if (sel.value === 'servico') return;
       const rows = await find('product', desc.value, sel.value);
       list.innerHTML = rows.map((p, k) => `<li data-k="${k}"><b>${esc(p.label)}</b> <small>${p.condition_type === 'usado' ? 'usado · ' : ''}estoque ${p.stock} · ${brl(Math.round(p.price * 100))}</small></li>`).join('');
-      list.hidden = !rows.length || desc.value.trim().length < 2;
+      list.hidden = !rows.length || (!ALL() && desc.value.trim().length < 2);
       list.onclick = (ev) => { const li = ev.target.closest('li'); if (!li) return; const p = rows[+li.dataset.k];
         desc.value = (p.label + (p.condition_type === 'usado' ? ' (USADO)' : '')).toUpperCase(); price.value = Number(p.price).toFixed(2).replace('.', ','); list.hidden = true; calc(); };
-    }, 200));
+    };
+    desc.addEventListener('input', debounce(run, 200));
+    desc.addEventListener('focus', () => { if (ALL()) run(); });
     desc.addEventListener('blur', () => setTimeout(() => (list.hidden = true), 150));
     line.querySelector('.rm').onclick = () => { line.remove(); if (!box.children.length) add(); calc(); };
     line.addEventListener('input', calc); box.appendChild(line);

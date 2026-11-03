@@ -78,7 +78,7 @@ final class QuoteToSale
             return $rows ? (int) $rows[0]['id'] : null;
         }
         $clean = trim(preg_replace('/\(USADO\)/i', '', $desc) ?? '');
-        $rows = Database::all("SELECT id FROM products WHERE active = 1 AND category = 'roda' AND name = ?", [$clean]);
+        $rows = Database::all('SELECT id FROM products WHERE active = 1 AND category = ? AND name = ?', [$category, $clean]);
         return count($rows) === 1 ? (int) $rows[0]['id'] : null;
     }
 }

@@ -183,6 +183,22 @@ final class SaleServiceTest extends TestCase
         SaleService::assertPdvCustomer(['first_name' => 'ANA', 'email' => 'invalido', 'tax_id' => '12345678909', 'phone' => '75999991111', 'zip' => '44020385', 'car' => 'POLO']);
     }
 
+    public function testWheelStandardAndBolts(): void
+    {
+        $this->assertSame('JOGO DE RODA KS R18 - DIAMANTADA PRATA', \App\Wheel::normalize(' ks ', '18', 'diamantada prata', false)['name']);
+        $this->assertSame('JOGO DE RODA USADA KS R17 - PRATA', \App\Wheel::normalize('KS', 'R17', 'PRATA', true)['name']);
+        try { \App\Wheel::normalize('KS', '18', 'ROSA', false); $this->fail('acabamento fora do padrao'); } catch (DomainException $e) { $this->assertStringContainsString('ACABAMENTO', $e->getMessage()); }
+        foreach ([['JOGO DE RODA KS R18 - DIAMANTADA PRATA', 'DIAMANTADA PRATA', '18'], ['JOGO DE RODA KS R20 - PRATA', 'PRATA', '20'], ['JOGO DE RODA KS R17 - PRATA', 'PRATA', '17']] as [$n, $f, $r]) {
+            Database::insert("INSERT INTO products (name, category, condition_type, brand, model, rim, price, stock) VALUES (?, 'roda', 'novo', 'KS', ?, ?, 1000, 2)", [$n, $f, $r]);
+        }
+        Database::insert("INSERT INTO products (name, category, condition_type, price, stock) VALUES ('JOGO DE PARAFUSOS 16 UNIDADES', 'parafuso', 'novo', 80, 5)");
+        $names = array_column(\App\Lookup::wheels(''), 'label'); // lista completa, sem digitar
+        $this->assertContains('JOGO DE RODA KS R18 - DIAMANTADA PRATA', $names);
+        $this->assertContains('JOGO DE RODA KS R20 - PRATA', $names);
+        $this->assertSame('JOGO DE PARAFUSOS 16 UNIDADES', \App\Lookup::bolts('')[0]['label']);
+        $this->assertCount(1, \App\Lookup::wheels('r17'));
+    }
+
     public function testQuoteCardInstallments(): void
     {
         $this->assertSame([['n' => 3, 'value' => 300.0]], \App\Quote::installmentPlan(900.0, 3));

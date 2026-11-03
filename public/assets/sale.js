@@ -27,7 +27,8 @@
   /* ---------- itens ---------- */
   const CATS = {
     pneu: { ph: 'BUSCAR MEDIDA (EX.: 175/65 R14)', empty: 'NENHUMA MEDIDA ENCONTRADA. DIGITE A MEDIDA (EX.: 175/65 R14) OU SO O ARO (R15).' },
-    roda: { ph: 'BUSCAR RODA (NOME, MARCA OU ARO)', empty: 'NENHUMA RODA ENCONTRADA NO ESTOQUE. CADASTRE EM ESTOQUE (CATEGORIA RODA).' },
+    roda: { ph: 'CLIQUE E ESCOLHA O JOGO DE RODA (OU DIGITE A MARCA/ARO)', empty: 'NENHUM JOGO DE RODA ENCONTRADO. CADASTRE EM ESTOQUE (CATEGORIA RODA).', unit: 'jogo(s)' },
+    parafuso: { ph: 'CLIQUE E ESCOLHA O JOGO DE PARAFUSOS', empty: 'NENHUM JOGO DE PARAFUSOS CADASTRADO. CADASTRE EM ESTOQUE (CATEGORIA PARAFUSO).', unit: 'jogo(s)' },
     servico: { ph: 'DESCRICAO DO SERVICO (EX.: ALINHAMENTO)', empty: '' },
   };
   function addItem(data = {}) {
@@ -38,7 +39,8 @@
         <div class="grid cat-grid">
           <select name="items[${i}][category]" aria-label="Categoria" class="cat-sel">
             <option value="pneu" ${cat === 'pneu' ? 'selected' : ''}>Pneus</option>
-            <option value="roda" ${cat === 'roda' ? 'selected' : ''}>Roda</option>
+            <option value="roda" ${cat === 'roda' ? 'selected' : ''}>Roda (jogo)</option>
+            <option value="parafuso" ${cat === 'parafuso' ? 'selected' : ''}>Parafusos (jogo 16 un.)</option>
             <option value="servico" ${cat === 'servico' ? 'selected' : ''}>Servicos</option>
           </select>
           <div class="suggest">
@@ -46,7 +48,7 @@
             <input type="hidden" name="items[${i}][product_id]" value="${esc(data.product_id)}">
             <ul hidden></ul>
           </div>
-          <input name="items[${i}][quantity]" type="number" min="1" inputmode="numeric" placeholder="QUANTIDADE" value="${esc(data.quantity)}">
+          <input name="items[${i}][quantity]" type="number" min="1" inputmode="numeric" placeholder="QTD. (JOGOS/UNID.)" value="${esc(data.quantity)}">
           <input name="items[${i}][unit_price]" inputmode="decimal" placeholder="PRECO UNITARIO" value="${esc(data.unit_price)}">
         </div>
         <div class="line-foot"><span class="small muted stock-info"></span><button type="button" class="rm" style="color:var(--danger)">Remover item</button></div>
@@ -63,27 +65,31 @@
       if (sel.value === 'servico') pid.value = '';
     };
     applyCat(false);
-    sel.addEventListener('change', () => { applyCat(true); recalc(); });
+    sel.addEventListener('change', () => { applyCat(true); recalc(); if (LISTALL.includes(sel.value)) name.focus(); });
 
-    name.addEventListener('input', debounce(async () => {
+    const LISTALL = ['roda', 'parafuso'];
+    const doSearch = async () => {
       if (sel.value === 'servico') return;
       pid.value = ''; info.textContent = '';
       const rows = await search('product', name.value, sel.value);
+      const unit = CATS[sel.value].unit || 'un.';
       list.innerHTML = rows.length
         ? rows.map((p, k) =>
-          `<li data-k="${k}"><b>${esc(p.label)}</b> <small>${p.condition_type === 'usado' ? '<span class="dot"></span>usado · ' : ''}estoque ${p.stock} · ${brl(Math.round(p.price * 100))}</small></li>`).join('')
+          `<li data-k="${k}"><b>${esc(p.label)}</b> <small>${p.condition_type === 'usado' ? '<span class="dot"></span>usado · ' : ''}${p.stock > 0 ? 'estoque ' + p.stock + ' ' + unit : 'sem estoque'} · ${brl(Math.round(p.price * 100))}${LISTALL.includes(sel.value) ? ' o jogo' : ''}</small></li>`).join('')
         : `<li class="empty" style="cursor:default;color:var(--muted)">${CATS[sel.value].empty}</li>`;
-      list.hidden = name.value.trim().length < 2;
+      list.hidden = !LISTALL.includes(sel.value) && name.value.trim().length < 2;
       list.onclick = (ev) => {
         const li = ev.target.closest('li'); if (!li || li.classList.contains('empty')) return;
         const p = rows[+li.dataset.k];
-        name.value = (p.label + (p.condition_type === 'usado' ? ' (usado)' : '')).toUpperCase(); pid.value = p.id;
+        name.value = (p.label + (p.condition_type === 'usado' && !/USAD/i.test(p.label) ? ' (usado)' : '')).toUpperCase(); pid.value = p.id;
         price.value = Number(p.price).toFixed(2).replace('.', ',');
         if (!qty.value) qty.value = 1;
-        info.textContent = 'Em estoque: ' + p.stock + (p.location ? ' · ' + p.location : '');
+        info.textContent = 'Em estoque: ' + p.stock + ' ' + unit + (p.location ? ' · ' + p.location : '');
         list.hidden = true; recalc();
       };
-    }, 200));
+    };
+    name.addEventListener('input', debounce(doSearch, 200));
+    name.addEventListener('focus', () => { if (LISTALL.includes(sel.value) && !pid.value) doSearch(); });
     name.addEventListener('blur', () => setTimeout(() => (list.hidden = true), 150));
     line.querySelector('.rm').onclick = () => { line.remove(); if (!itemsBox.children.length) addItem(); recalc(); };
     line.addEventListener('input', recalc);
@@ -91,6 +97,11 @@
   }
 
   /* ---------- pagamentos ---------- */
+  let FIN = [], BR = [], RIMS = [13, 22];
+  try { FIN = JSON.parse(form.dataset.finishes); BR = JSON.parse(form.dataset.brands); RIMS = JSON.parse(form.dataset.rims); } catch (e) { /* sem padrao */ }
+  const finOpts = FIN.map((f) => `<option value="${esc(f)}">${esc(f)}</option>`).join('');
+  let rimOpts = ''; for (let r = RIMS[0]; r <= RIMS[1]; r++) rimOpts += `<option value="${r}">R${r}</option>`;
+  if (!document.getElementById('wt-brands')) { const dl = document.createElement('datalist'); dl.id = 'wt-brands'; dl.innerHTML = BR.map((b) => `<option value="${esc(b)}">`).join(''); document.body.appendChild(dl); }
   function addPayment(data = {}) {
     const i = seq++;
     const sel = (m) => (data.method === m ? 'selected' : '');
@@ -112,6 +123,14 @@
               <option value="roda" ${data.trade_category === 'roda' ? 'selected' : ''}>Roda · usado</option>
             </select>
             <input name="payments[${i}][note]" value="${esc(data.note)}">
+            <div class="wheel-trade stack" hidden style="grid-column:1/-1">
+              <div class="grid">
+                <input class="wt-brand" list="wt-brands" placeholder="MARCA (EX.: KS)" autocomplete="off">
+                <select class="wt-rim" aria-label="Aro"><option value="">ARO</option>${rimOpts}</select>
+                <select class="wt-fin" aria-label="Acabamento"><option value="">ACABAMENTO</option>${finOpts}</select>
+              </div>
+              <small class="muted">Roda usada entra no estoque como: JOGO DE RODA USADA MARCA R18 - ACABAMENTO. Quantidade = jogos de 4 rodas.</small>
+            </div>
             <input name="payments[${i}][trade_qty]" type="number" min="1" placeholder="QTD. RECEBIDA" value="${esc(data.trade_qty || 1)}">
           </div>
         </div>
@@ -124,13 +143,21 @@
     const tcat = line.querySelector('.trade-cat');
     const tnote = line.querySelector('[name$="[note]"]');
     const msg = line.querySelector('.trade-msg');
+    const wt = line.querySelector('.wheel-trade'), wBrand = line.querySelector('.wt-brand'), wRim = line.querySelector('.wt-rim'), wFin = line.querySelector('.wt-fin');
+    const compose = () => { tnote.value = (wBrand.value && wRim.value && wFin.value) ? `${wBrand.value.toUpperCase()} R${wRim.value} - ${wFin.value}` : ''; };
+    const m0 = /^(.+?)\s+R(\d{2})\s+-\s+(.+)$/.exec(String(data.note || ''));
+    if (m0 && data.trade_category === 'roda') { wBrand.value = m0[1]; wRim.value = m0[2]; wFin.value = m0[3]; }
+    [wBrand, wRim, wFin].forEach((x) => x.addEventListener('input', () => { if (x === wBrand) x.value = x.value.toUpperCase(); compose(); recalc(); }));
     const sync = () => {
       const isTrade = method.value === 'troca';
       trade.hidden = !isTrade; line.classList.toggle('trade-line', isTrade);
       const roda = tcat.value === 'roda';
       tnote.placeholder = roda ? 'RODA RECEBIDA (EX.: ARO 15 LIGA LEVE 5X100)' : 'PNEU RECEBIDO (EX.: 175/70 R14)';
       msg.textContent = roda ? 'Roda usada: este valor entra na categoria Roda, estoque de usados' : 'Pneu usado: este valor entra na categoria Pneu, estoque de usados';
-      tnote.required = isTrade;
+      tnote.required = isTrade && !roda;
+      wt.hidden = !(isTrade && roda); tnote.hidden = roda;
+      [wBrand, wRim, wFin].forEach((x) => { x.required = isTrade && roda; });
+      if (isTrade && roda) compose();
       const cb = line.querySelector('.cred-box');
       const canCred = ['dinheiro', 'pix', 'cartao'].includes(method.value);
       cb.hidden = !canCred;
