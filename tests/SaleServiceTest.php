@@ -282,6 +282,7 @@ final class SaleServiceTest extends TestCase
     {
         SaleService::create($this->sale());
         Database::insert("INSERT INTO accounts_payable (description, category, kind, amount, due_date, paid_at) VALUES ('ALUGUEL','ALUGUEL','despesa',100,CURDATE(),NOW())");
+        Database::insert("INSERT INTO accounts_payable (description, category, kind, amount, due_date, paid_at) VALUES ('BOLETO PNEUS','PNEUS','ativo',400,CURDATE(),NOW())");
         Database::insert("INSERT INTO accounts_payable (description, category, kind, amount, due_date) VALUES ('ENERGIA','ENERGIA','despesa',50,'2020-01-01')");
         $r = \App\Finance::range('mes');
         $s = \App\Finance::summary($r['from'], $r['to'], $r['days']);
@@ -321,5 +322,18 @@ final class SaleServiceTest extends TestCase
     {
         $f = \App\CardFees::resolve(['machine_id' => 1, 'card_brand' => 'elo', 'card_inst' => 'd'], 1000.0);
         $this->assertSame(34.5, $f['fee_amount']);
+    }
+
+    public function testAssetBoletosReduceGrossRevenueNotOperatingExpenses(): void
+    {
+        SaleService::create($this->sale()); // receita 600
+        $today = date('Y-m-d H:i:s');
+        Database::run("INSERT INTO accounts_payable (description, category, kind, amount, paid_at) VALUES ('FORNECEDOR PNEUS', 'PNEUS', 'ativo', 250, ?)", [$today]);
+        Database::run("INSERT INTO accounts_payable (description, category, kind, amount, paid_at) VALUES ('ALUGUEL', 'ALUGUEL', 'despesa', 100, ?)", [$today]);
+        $s = \App\Finance::summary(date('Y-m-d'), date('Y-m-d'), 1);
+        $this->assertSame(250.0, $s['assets']);
+        $this->assertSame(100.0, $s['expenses']);
+        $this->assertSame(350.0, $s['gross']);   // 600 - 250
+        $this->assertSame(250.0, $s['profit']);  // 350 - 100 de despesa operacional (folha 0)
     }
 }

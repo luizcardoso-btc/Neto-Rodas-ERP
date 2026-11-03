@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $back = ['tab' => isset(FIN_TABS[$_POST['tab'] ?? '']) ? $_POST['tab'] : 'resumo', 'p' => $pkey, 'cm' => $cm];
     $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['due_date'] ?? '') ? $_POST['due_date'] : null;
     try {
-        if ($action === 'add_expense' || $action === 'add_tax') {
+        if ($action === 'add_expense' || $action === 'add_tax' || $action === 'add_asset') {
             $amount = parse_money($_POST['amount'] ?? 0);
             if ($action === 'add_tax') {
                 $comp = preg_match('/^\d{4}-\d{2}$/', $_POST['competence'] ?? '') ? $_POST['competence'] : date('Y-m');
@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $desc = upper((string) ($_POST['description'] ?? ''));
                 $cat = upper((string) ($_POST['category'] ?? '')) ?: null;
-                $kind = 'despesa';
+                $kind = $action === 'add_asset' ? 'ativo' : 'despesa';
                 $repeat = max(1, min(12, (int) ($_POST['repeat'] ?? 1)));
             }
             if ($desc === '' || $amount <= 0) {
@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     [mb_substr($desc, 0, 200), $cat, $kind, $amount, $due, $paidAt]
                 );
             }
-            flash('ok', $kind === 'imposto' ? 'Pagamento de imposto lancado.' : ($repeat > 1 ? "Despesa lancada ($repeat meses)." : 'Despesa lancada.'));
+            flash('ok', $kind === 'imposto' ? 'Pagamento de imposto lancado.' : ($kind === 'ativo' ? 'Boleto de mercadoria lancado (abate da receita bruta).' : ($repeat > 1 ? "Despesa lancada ($repeat meses)." : 'Despesa lancada.')));
         } elseif ($action === 'add_receivable') {
             $amount = parse_money($_POST['amount'] ?? 0);
             $desc = upper((string) ($_POST['description'] ?? ''));
@@ -108,7 +108,7 @@ function fin_kpis(array $s, string $base): void
 { ?>
   <div class="fin-kpis">
     <div class="kpi"><span>Receita bruta</span><strong><?= money($s['revenue']) ?></strong><small><?= (int) $s['sales'] ?> venda(s) · ticket <?= money($s['ticket']) ?></small></div>
-    <div class="kpi"><span>Lucro bruto</span><strong class="ok"><?= money($s['gross']) ?></strong><small>depois das mercadorias, taxas e impostos</small></div>
+    <div class="kpi"><span>Lucro bruto</span><strong class="ok"><?= money($s['gross']) ?></strong><small>receita − mercadorias (ativos) − taxas − impostos</small></div>
     <div class="kpi"><span>Despesas operacionais</span><strong><?= money($s['expenses'] + $s['payroll']) ?></strong><small>despesas <?= money($s['expenses']) ?> + folha <?= money($s['payroll']) ?></small></div>
     <div class="kpi final <?= $s['profit'] < 0 ? 'neg' : '' ?>"><span>Lucro estimado final</span><strong class="<?= $s['profit'] < 0 ? 'neg' : 'ok' ?>"><?= money($s['profit']) ?></strong><small>margem <?= number_format($s['margin'], 1, ',', '.') ?>%</small></div>
   </div>
@@ -126,7 +126,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
 { ?>
   <div class="scroll"><table><thead><tr><th>Descricao</th><th>Vencimento</th><th class="num">Valor</th><th></th></tr></thead><tbody>
   <?php foreach ($rows as $r): $late = !$r['paid_at'] && $r['due_date'] && $r['due_date'] < date('Y-m-d'); ?>
-    <tr style="<?= $r['paid_at'] ? 'opacity:.55' : '' ?>"><td><?= e($r['description']) ?><?= isset($r['kind']) && $r['kind'] === 'imposto' ? ' <span class="tag warn">imposto</span>' : '' ?><?= $hasCustomer && !empty($r['customer']) ? '<br><span class="small muted">' . e($r['customer']) . '</span>' : '' ?><?= !empty($r['category']) && ($r['kind'] ?? '') !== 'imposto' ? '<br><span class="small muted">' . e($r['category']) . '</span>' : '' ?></td>
+    <tr style="<?= $r['paid_at'] ? 'opacity:.55' : '' ?>"><td><?= e($r['description']) ?><?= isset($r['kind']) && $r['kind'] === 'imposto' ? ' <span class="tag warn">imposto</span>' : (($r['kind'] ?? '') === 'ativo' ? ' <span class="tag blue">mercadoria</span>' : '') ?><?= $hasCustomer && !empty($r['customer']) ? '<br><span class="small muted">' . e($r['customer']) . '</span>' : '' ?><?= !empty($r['category']) && ($r['kind'] ?? '') !== 'imposto' ? '<br><span class="small muted">' . e($r['category']) . '</span>' : '' ?></td>
       <td><?= e(fmt_date($r['due_date'])) ?> <?php if ($r['paid_at']): ?><span class="tag green">pago</span><?php elseif ($late): ?><span class="tag red">atrasado</span><?php endif; ?></td>
       <td class="num"><b><?= money($r['amount']) ?></b></td>
       <td class="actions"><?php if (!$r['paid_at']): ?>
@@ -160,7 +160,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
         <div class="tile"><span>Saldo previsto</span><b><?= money($openAr - $openAp) ?></b><small>a receber − a pagar</small></div>
       </div></div>
     <div class="card"><h2>Movimentações recentes</h2><p class="sub">Vendas, despesas, impostos, repasses, ajustes e edições.</p>
-      <?php $kinds = ['venda' => ['green', 'venda'], 'despesa' => ['warn', 'despesa'], 'imposto' => ['warn', 'imposto'], 'credor' => ['blue', 'credor'], 'estoque' => ['', 'estoque'], 'edicao' => ['red', 'edição']]; ?>
+      <?php $kinds = ['venda' => ['green', 'venda'], 'despesa' => ['warn', 'despesa'], 'imposto' => ['warn', 'imposto'], 'ativo' => ['blue', 'mercadoria'], 'credor' => ['blue', 'credor'], 'estoque' => ['', 'estoque'], 'edicao' => ['red', 'edição']]; ?>
       <table><tbody><?php foreach (Finance::movements(12) as $m): ?><tr><td><span class="tag <?= $kinds[$m['kind']][0] ?>"><?= e($kinds[$m['kind']][1]) ?></span></td><td><?= e($m['text']) ?><br><span class="small muted"><?= e(fmt_date($m['ts'], true)) ?></span></td><td class="num"><?= $m['amount'] === null ? '' : '<b>' . money($m['amount']) . '</b>' ?></td></tr><?php endforeach; ?></tbody></table></div>
   </div>
 
@@ -185,12 +185,13 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
   $maxItem = max(1, ...array_map(fn ($i) => (float) $i['amount'], $items ?: [['amount' => 1]]));
   $ap = Database::all('SELECT * FROM accounts_payable WHERE paid_at IS NULL ORDER BY due_date IS NULL, due_date LIMIT 100'); ?>
   <div class="fin-kpis">
-    <div class="kpi"><span>Despesas pagas no período</span><strong><?= money($s['expenses']) ?></strong><small><?= count($cats) ?> categoria(s)</small></div>
+    <div class="kpi"><span>Mercadorias pagas (ativos)</span><strong><?= money($s['assets']) ?></strong><small>abate da receita bruta, não do lucro</small></div>
+    <div class="kpi"><span>Despesas operacionais pagas</span><strong><?= money($s['expenses']) ?></strong><small><?= count($cats) ?> categoria(s)</small></div>
     <div class="kpi"><span>Impostos pagos no período</span><strong class="bad"><?= money($s['taxes']) ?></strong><small>estimado: <?= money($s['tax_estimated']) ?> (<?= number_format((float) $cfg['tax_rate'], 2, ',', '.') ?>%)</small></div>
     <div class="kpi"><span>Folha dos vendedores</span><strong><?= money($s['payroll']) ?></strong><small>proporcional ao período</small></div>
   </div>
   <div class="cols fin-cols">
-    <div class="card caps"><h2>Lançar despesa</h2><p class="sub">Aluguel, energia, marketing, fornecedores… Marque "já paga" para entrar no lucro do período.</p>
+    <div class="card caps"><h2>Lançar despesa</h2><p class="sub">Aluguel, energia, marketing… (mercadoria de fornecedor vai em "Boletos de mercadoria"). Marque "já paga" para entrar no lucro do período.</p>
       <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_expense"><input type="hidden" name="tab" value="despesas">
         <input name="description" placeholder="DESCRIÇÃO *" required>
         <div class="row c2"><input name="category" list="exp-cats" placeholder="CATEGORIA"><input name="amount" inputmode="decimal" placeholder="VALOR *" required></div>
@@ -198,6 +199,14 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
         <div class="row c2"><div><label class="f" for="due1">Vencimento / data</label><input id="due1" type="date" name="due_date"></div><div><label class="f" for="rep">Repetir (meses)</label><input id="rep" type="number" name="repeat" min="1" max="12" value="1"></div></div>
         <label class="chk"><input type="checkbox" name="paid" value="1"> Já paga</label>
         <button class="btn green block" type="submit">Lançar despesa</button></form></div>
+    <div class="card caps"><h2>Boletos de mercadoria (ativos)</h2><p class="sub">Compra de pneus, rodas e parafusos dos fornecedores. Abate da <b>receita bruta</b>, não entra como despesa operacional.</p>
+      <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_asset"><input type="hidden" name="tab" value="despesas">
+        <input name="description" placeholder="FORNECEDOR / DESCRIÇÃO *" required>
+        <div class="row c2"><input name="category" list="ast-cats" placeholder="TIPO (PNEUS, RODAS…)"><input name="amount" inputmode="decimal" placeholder="VALOR *" required></div>
+        <datalist id="ast-cats"><?php foreach (Finance::ASSET_CATEGORIES as $c): ?><option value="<?= e($c) ?>"><?php endforeach; ?></datalist>
+        <div class="row c2"><div><label class="f" for="due3">Vencimento / data</label><input id="due3" type="date" name="due_date"></div><div><label class="f" for="rep3">Parcelas (boletos mensais)</label><input id="rep3" type="number" name="repeat" min="1" max="12" value="1"></div></div>
+        <label class="chk"><input type="checkbox" name="paid" value="1"> Já paga</label>
+        <button class="btn block" type="submit">Lançar boleto de mercadoria</button></form></div>
     <div class="card caps"><h2>Pagamento de impostos</h2><p class="sub">Registre as guias pagas (DAS, ICMS, ISS…). Elas entram no lucro e alimentam o contador virtual.</p>
       <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_tax"><input type="hidden" name="tab" value="despesas">
         <select name="tax_type" aria-label="Imposto"><?php foreach (Finance::TAX_TYPES as $t): ?><option><?= e($t) ?></option><?php endforeach; ?></select>
@@ -208,7 +217,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
   </div>
   <div class="cols fin-cols" style="margin-top:20px">
     <div class="card"><h2>Despesas do período</h2><p class="sub"><?= count($items) ?> lançamento(s) pago(s) entre <?= e(fmt_date($range['from'])) ?> e <?= e(fmt_date($range['to'])) ?></p>
-      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : '' ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
+      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
       <?php if (!$items): ?><p class="muted">Nenhuma despesa paga neste período.</p><?php endif; ?>
       <?php if ($cats): ?><h3 style="margin:18px 0 6px;font-size:14px">Por categoria</h3><table><tbody><?php foreach ($cats as $c): ?><tr><td><?= e($c['cat']) ?></td><td class="num"><b><?= money($c['total']) ?></b></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></div>
     <div class="card"><h2>Contas a pagar (em aberto)</h2><p class="sub">Dê baixa quando pagar: o valor passa a contar no lucro.</p><?php fin_table($ap, 'accounts_payable', false, 'despesas'); ?></div>

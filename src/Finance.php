@@ -8,6 +8,7 @@ final class Finance
 {
     public const PERIODS = ['hoje' => 'Hoje', '7d' => '7 dias', '30d' => '30 dias', '90d' => '90 dias', 'mes' => 'Este mês', 'tudo' => 'Tudo'];
     public const EXPENSE_CATEGORIES = ['ALUGUEL', 'ENERGIA', 'ÁGUA', 'INTERNET/TELEFONE', 'MARKETING', 'MANUTENÇÃO', 'FORNECEDOR', 'COMISSÃO', 'TRANSPORTE', 'OUTROS'];
+    public const ASSET_CATEGORIES = ['PNEUS', 'RODAS', 'PARAFUSOS', 'OUTRAS MERCADORIAS'];
     public const TAX_TYPES = ['DAS - SIMPLES NACIONAL', 'ICMS', 'ISS', 'IRPJ/CSLL', 'INSS/FGTS', 'IPTU/TAXAS', 'OUTRO IMPOSTO'];
 
     /** @return array{key:string,from:string,to:string,days:int,label:string} */
@@ -50,18 +51,19 @@ final class Finance
         $payroll = Reports::payroll($weekly, $days);
         $paid = fn (string $kind) => (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind = ? AND ' . self::dateRange('paid_at'), array_merge([$kind], $a));
         $expenses = $paid('despesa');
+        $assets = $paid('ativo'); // boletos de mercadoria (pneus/rodas): abatem da receita bruta, nao sao despesa operacional
         $taxes = $paid('imposto');
         $creditor = (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM creditor_payments WHERE paid_on >= ? AND paid_on <= ?', $a);
-        $gross = round($revenue - $cmv - $cardFees - $taxes, 2);
+        $gross = round($revenue - $assets - $cardFees - $taxes, 2);
         $profit = round($gross - $expenses - $payroll, 2);
 
         // Ponto de equilibrio: custos fixos / margem de contribuicao.
-        $contribution = $revenue > 0 ? ($revenue - $cmv - $cardFees) / $revenue : 0.0;
+        $contribution = $revenue > 0 ? ($revenue - $assets - $cardFees) / $revenue : 0.0;
         $fixed = $expenses + $taxes + $payroll;
         $breakeven = $contribution > 0 ? round($fixed / $contribution, 2) : null;
 
         return [
-            'sales' => (int) $r['n'], 'revenue' => $revenue, 'cmv' => $cmv, 'card_fees' => $cardFees, 'payroll' => $payroll,
+            'sales' => (int) $r['n'], 'revenue' => $revenue, 'cmv' => $cmv, 'assets' => $assets, 'card_fees' => $cardFees, 'payroll' => $payroll,
             'expenses' => $expenses, 'taxes' => $taxes, 'creditor' => $creditor, 'gross' => $gross, 'profit' => $profit,
             'margin' => $revenue > 0 ? round($profit / $revenue * 100, 1) : 0.0,
             'ticket' => $r['n'] ? round($revenue / (int) $r['n'], 2) : 0.0,
@@ -77,7 +79,7 @@ final class Finance
     public static function breakdown(array $s): array
     {
         $rows = [
-            ['Custo das mercadorias', $s['cmv'], '#2f6fd6', 'custo cadastrado nos itens vendidos'],
+            ['Compra de mercadorias (ativos)', $s['assets'], '#2f6fd6', 'boletos de pneus/rodas pagos no período'],
             ['Impostos pagos', $s['taxes'], '#f97316', 'DAS, ICMS etc. lançados como pagos'],
             ['Taxas do cartão', $s['card_fees'], '#14b8a6', 'taxa de cada máquina (amarela/azul) por parcela'],
             ['Folha dos vendedores', $s['payroll'], '#f59e0b', 'semanal ÷ 7 × dias do período'],
@@ -263,7 +265,7 @@ final class Finance
             $rows[] = ['ts' => $r['created_at'], 'kind' => 'venda', 'text' => 'Venda #' . $r['id'] . ' - ' . ($r['cust'] ?: 'sem cliente'), 'amount' => (float) $r['total']];
         }
         foreach (Database::all("SELECT description, amount, kind, paid_at FROM accounts_payable WHERE paid_at IS NOT NULL ORDER BY paid_at DESC LIMIT $limit") as $r) {
-            $rows[] = ['ts' => $r['paid_at'], 'kind' => $r['kind'] === 'imposto' ? 'imposto' : 'despesa', 'text' => ($r['kind'] === 'imposto' ? 'Imposto pago: ' : 'Despesa paga: ') . $r['description'], 'amount' => -(float) $r['amount']];
+            $rows[] = ['ts' => $r['paid_at'], 'kind' => $r['kind'] === 'imposto' ? 'imposto' : ($r['kind'] === 'ativo' ? 'ativo' : 'despesa'), 'text' => ($r['kind'] === 'imposto' ? 'Imposto pago: ' : ($r['kind'] === 'ativo' ? 'Mercadoria paga: ' : 'Despesa paga: ')) . $r['description'], 'amount' => -(float) $r['amount']];
         }
         foreach (Database::all("SELECT c.amount, c.created_at, c.source, c.sale_id, s.name FROM creditor_payments c LEFT JOIN sellers s ON s.id = c.seller_id ORDER BY c.id DESC LIMIT $limit") as $r) {
             $rows[] = ['ts' => $r['created_at'], 'kind' => 'credor', 'text' => 'Repasse ao credor por ' . ($r['name'] ?: 'vendedor') . ($r['sale_id'] ? ' (venda #' . $r['sale_id'] . ')' : ''), 'amount' => (float) $r['amount']];

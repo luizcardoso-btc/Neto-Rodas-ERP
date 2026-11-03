@@ -42,16 +42,21 @@ final class Reports
         $weekly = (float) Database::value('SELECT COALESCE(SUM(weekly_pay),0) FROM sellers WHERE active = 1');
         $payroll = self::payroll($weekly, $p['elapsed']);
         $expenses = (float) Database::value(
-            'SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE paid_at >= ? AND paid_at < DATE_ADD(?, INTERVAL 1 DAY)',
+            "SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind <> 'ativo' AND paid_at >= ? AND paid_at < DATE_ADD(?, INTERVAL 1 DAY)",
+            [$p['start'], $p['end']]
+        );
+        // boletos de mercadoria (ativos) abatem da receita bruta no lugar do custo cadastrado
+        $assets = (float) Database::value(
+            "SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind = 'ativo' AND paid_at >= ? AND paid_at < DATE_ADD(?, INTERVAL 1 DAY)",
             [$p['start'], $p['end']]
         );
         $revenue = (float) $r['revenue'];
-        $profit = round($revenue - $cmv - $payroll - $expenses, 2);
+        $profit = round($revenue - $assets - $payroll - $expenses, 2);
 
         return [
             'period' => $p, 'sales' => (int) $r['n'], 'revenue' => $revenue,
             'ticket' => $r['n'] ? round($revenue / (int) $r['n'], 2) : 0.0,
-            'cmv' => $cmv, 'weekly_payroll' => $weekly, 'payroll' => $payroll, 'expenses' => $expenses,
+            'cmv' => $cmv, 'assets' => $assets, 'weekly_payroll' => $weekly, 'payroll' => $payroll, 'expenses' => $expenses,
             'profit' => $profit, 'margin' => $revenue > 0 ? round($profit / $revenue * 100, 1) : 0.0,
         ];
     }
