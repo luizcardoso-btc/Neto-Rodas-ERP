@@ -332,6 +332,7 @@ final class SaleServiceTest extends TestCase
         Database::run("INSERT INTO accounts_payable (description, category, kind, amount, paid_at) VALUES ('ALUGUEL', 'ALUGUEL', 'despesa', 100, ?)", [$today]);
         $s = \App\Finance::summary(date('Y-m-d'), date('Y-m-d'), 1);
         $this->assertSame(250.0, $s['assets']);
+        $this->assertSame(350.0, $s['after_assets']); // receita 600 - ativos 250
         $this->assertSame(100.0, $s['expenses']);
         $this->assertSame(200.0, $s['gross']);   // 600 - 400 de custo das mercadorias vendidas (boleto nao entra)
         $this->assertSame(100.0, $s['profit']);  // 200 - 100 de despesa operacional (folha 0)

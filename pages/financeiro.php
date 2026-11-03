@@ -147,7 +147,8 @@ function fin_kpis(array $s, string $base): void
 { ?>
   <div class="fin-kpis">
     <div class="kpi"><span>Receita bruta</span><strong><?= money($s['revenue']) ?></strong><small><?= (int) $s['sales'] ?> venda(s) · ticket <?= money($s['ticket']) ?></small></div>
-    <div class="kpi"><span>Despesas de ativos</span><strong><?= money($s['assets']) ?></strong><small>boletos de pneus/rodas pagos no período (informativo)</small></div>
+    <div class="kpi"><span>Despesas de ativos</span><strong><?= money($s['assets']) ?></strong><small>boletos de pneus/rodas pagos no período</small></div>
+    <div class="kpi"><span>Receita − ativos</span><strong class="<?= $s['after_assets'] < 0 ? 'neg-t' : '' ?>"><?= money($s['after_assets']) ?></strong><small>receita bruta <?= money($s['revenue']) ?> − despesas de ativos <?= money($s['assets']) ?></small></div>
     <div class="kpi"><span>Lucro bruto</span><strong class="ok"><?= money($s['gross']) ?></strong><small>receita − custo das mercadorias vendidas − taxas − impostos</small></div>
     <div class="kpi"><span>Despesas operacionais</span><strong><?= money($s['expenses'] + $s['payroll']) ?></strong><small>despesas <?= money($s['expenses']) ?> + folha semanal <?= money($s['payroll']) ?></small></div>
     <div class="kpi final <?= $s['profit'] < 0 ? 'neg' : '' ?>"><span>Lucro estimado final</span><strong class="<?= $s['profit'] < 0 ? 'neg' : 'ok' ?>"><?= money($s['profit']) ?></strong><small>margem <?= number_format($s['margin'], 1, ',', '.') ?>%</small></div>

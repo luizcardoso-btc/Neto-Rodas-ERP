@@ -64,7 +64,7 @@ final class Finance
         $breakeven = $contribution > 0 ? round($fixed / $contribution, 2) : null;
 
         return [
-            'sales' => (int) $r['n'], 'revenue' => $revenue, 'cmv' => $cmv, 'assets' => $assets, 'card_fees' => $cardFees, 'payroll' => $payroll, 'payroll_est' => $payrollEst, 'weekly_total' => $weekly,
+            'sales' => (int) $r['n'], 'revenue' => $revenue, 'cmv' => $cmv, 'assets' => $assets, 'after_assets' => round($revenue - $assets, 2), 'card_fees' => $cardFees, 'payroll' => $payroll, 'payroll_est' => $payrollEst, 'weekly_total' => $weekly,
             'expenses' => $expenses, 'taxes' => $taxes, 'creditor' => $creditor, 'gross' => $gross, 'profit' => $profit,
             'margin' => $revenue > 0 ? round($profit / $revenue * 100, 1) : 0.0,
             'ticket' => $r['n'] ? round($revenue / (int) $r['n'], 2) : 0.0,
