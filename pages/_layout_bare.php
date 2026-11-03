@@ -13,5 +13,6 @@
   <div class="flash <?= $f['type'] === 'ok' ? 'ok' : 'err' ?>" style="margin:12px" role="status"><?= e($f['message']) ?></div>
 <?php endforeach; ?>
 <?= $content ?>
+<script src="<?= e(asset('cep.js')) ?>"></script>
 </body>
 </html>

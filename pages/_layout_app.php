@@ -34,5 +34,6 @@ $nav = array_filter(PAGES, fn ($k) => $k !== 'zerar' && ($k !== 'vendedores' || 
     <?= $content ?>
   </main>
 </div>
+<script src="<?= e(asset('cep.js')) ?>"></script>
 </body>
 </html>

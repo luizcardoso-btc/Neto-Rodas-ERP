@@ -60,6 +60,10 @@ try {
     }
     $allowNeg = App\Env::get('ALLOW_NEGATIVE_STOCK', 'false') === 'true';
     $res = SaleService::create($data, $source, $allowNeg);
+    $quoteId = (int) ($_POST['quote_id'] ?? 0);
+    if ($quoteId && !$res['duplicate']) {
+        App\Database::run("UPDATE quotes SET status = 'vendido', sale_id = ? WHERE id = ? AND sale_id IS NULL", [$res['id'], $quoteId]);
+    }
     flash('ok', $res['duplicate'] ? "Venda #{$res['id']} ja tinha sido registrada." : "Venda #{$res['id']} finalizada.");
 } catch (DomainException $e) {
     $_SESSION['_old_sale'] = $_POST;

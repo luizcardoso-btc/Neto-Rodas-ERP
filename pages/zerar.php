@@ -7,8 +7,8 @@ if (!Auth::isAdmin()) {
     exit('Acesso restrito a administradores.');
 }
 
-// Data de corte: tudo ANTES dela e considerado teste. Padrao: dia 1 do mes atual (zera o mes passado e anteriores).
-$cut = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_REQUEST['cut'] ?? '')) ? (string) $_REQUEST['cut'] : date('Y-m-01');
+// Data de corte: tudo ANTES dela e considerado teste. Padrao: 03/11/2026, dia em que o sistema entrou em operacao.
+$cut = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_REQUEST['cut'] ?? '')) ? (string) $_REQUEST['cut'] : '2026-11-03'; // dia em que o sistema entrou em operacao
 $cutAt = $cut . ' 00:00:00';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

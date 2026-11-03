@@ -52,6 +52,8 @@ final class Quote
         $valid = (string) ($d['valid_until'] ?? '');
         $valid = preg_match('/^\d{4}-\d{2}-\d{2}$/', $valid) ? $valid : date('Y-m-d', strtotime('+' . (int) Settings::all()['quote_validity_days'] . ' days'));
 
+        $payMethod = isset(self::PAY_METHODS[$d['pay_method'] ?? '']) ? (string) $d['pay_method'] : null;
+        $installments = $payMethod === 'credito' ? max(1, min(12, (int) ($d['installments'] ?? 1))) : 1;
         $fields = [
             $name,
             self::nullable(format_phone((string) ($d['customer_phone'] ?? ''))),
@@ -62,6 +64,7 @@ final class Quote
             $discCents / 100, ($subCents - $discCents) / 100, $valid,
             self::nullable(mb_substr(upper((string) ($d['payment_terms'] ?? '')), 0, 255)),
             self::nullable(upper((string) ($d['notes'] ?? ''))),
+            $payMethod, $installments,
         ];
         $pdo = Database::pdo();
         $pdo->beginTransaction();
@@ -71,14 +74,14 @@ final class Quote
                     throw new DomainException('Orçamento nao encontrado.');
                 }
                 Database::run(
-                    'UPDATE quotes SET customer_name=?, customer_phone=?, customer_email=?, customer_tax_id=?, customer_car=?, seller_id=?, discount=?, total=?, valid_until=?, payment_terms=?, notes=? WHERE id=?',
+                    'UPDATE quotes SET customer_name=?, customer_phone=?, customer_email=?, customer_tax_id=?, customer_car=?, seller_id=?, discount=?, total=?, valid_until=?, payment_terms=?, notes=?, pay_method=?, installments=? WHERE id=?',
                     array_merge($fields, [$id])
                 );
                 Database::run('DELETE FROM quote_items WHERE quote_id = ?', [$id]);
             } else {
                 $id = Database::insert(
-                    'INSERT INTO quotes (customer_name, customer_phone, customer_email, customer_tax_id, customer_car, seller_id, discount, total, valid_until, payment_terms, notes, token, created_by)
-                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    'INSERT INTO quotes (customer_name, customer_phone, customer_email, customer_tax_id, customer_car, seller_id, discount, total, valid_until, payment_terms, notes, pay_method, installments, token, created_by)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     array_merge($fields, [bin2hex(random_bytes(20)), $username])
                 );
             }
@@ -127,6 +130,44 @@ final class Quote
         return $q;
     }
 
+    public const PAY_METHODS = ['pix' => 'Pix', 'dinheiro' => 'Dinheiro', 'debito' => 'Cartão de débito', 'credito' => 'Cartão de crédito'];
+
+    /**
+     * Parcelas do cartao: divide o total em N vezes (centavos que sobram vao na ultima parcela).
+     * @return list<array{n:int,value:float}> grupos "n parcelas de value"
+     */
+    public static function installmentPlan(float $total, int $n): array
+    {
+        $n = max(1, $n);
+        $cents = (int) round($total * 100);
+        $base = intdiv($cents, $n);
+        $rest = $cents - $base * $n;
+        if ($rest === 0) {
+            return [['n' => $n, 'value' => (float) $base / 100]];
+        }
+        return $n === 1 ? [['n' => 1, 'value' => $cents / 100.0]] : [['n' => $n - 1, 'value' => $base / 100.0], ['n' => 1, 'value' => ($base + $rest) / 100.0]];
+    }
+
+    /** Linha da forma de pagamento: "Cartão de crédito: 3 parcelas de R$ 300,00 (total R$ 900,00)". */
+    public static function paymentLine(array $q): string
+    {
+        $m = (string) ($q['pay_method'] ?? '');
+        $out = '';
+        if ($m === 'credito') {
+            $n = max(1, (int) ($q['installments'] ?? 1));
+            if ($n === 1) {
+                $out = 'Cartão de crédito à vista: ' . money($q['total']);
+            } else {
+                $parts = array_map(fn ($g) => $g['n'] . ($g['n'] === 1 ? ' parcela de ' : ' parcelas de ') . money($g['value']), self::installmentPlan((float) $q['total'], $n));
+                $out = 'Cartão de crédito em ' . $n . 'x: ' . implode(' + ', $parts) . ' (total ' . money($q['total']) . ')';
+            }
+        } elseif (isset(self::PAY_METHODS[$m])) {
+            $out = self::PAY_METHODS[$m] . ': ' . money($q['total']);
+        }
+        $extra = trim((string) ($q['payment_terms'] ?? ''));
+        return trim($out . ($out !== '' && $extra !== '' ? ' · ' : '') . $extra);
+    }
+
     public static function number(array $q): string
     {
         return str_pad((string) $q['id'], 4, '0', STR_PAD_LEFT);
@@ -138,12 +179,14 @@ final class Quote
         return (is_https() ? 'https' : 'http') . '://' . $host . '/' . url('orcamento', ['pdf' => $q['token']]);
     }
 
+    /** Texto que acompanha o PDF no WhatsApp (sem link do sistema: o PDF segue como anexo). */
     public static function whatsappText(array $q): string
     {
         $store = Settings::all()['store_name'];
+        $pay = self::paymentLine($q);
         return sprintf(
-            "OLÁ, %s! SEGUE O SEU ORÇAMENTO Nº %s DA %s NO VALOR DE %s (VÁLIDO ATÉ %s).\nPDF: %s",
-            $q['customer_name'], self::number($q), $store, money($q['total']), fmt_date($q['valid_until']), self::pdfUrl($q)
+            "Olá, %s! Segue o seu orçamento nº %s da %s no valor de %s.%s Válido até %s. Qualquer dúvida é só chamar!",
+            $q['customer_name'], self::number($q), $store, money($q['total']), $pay !== '' ? ' Pagamento: ' . $pay . '.' : '', fmt_date($q['valid_until'])
         );
     }
 
@@ -283,8 +326,8 @@ final class Quote
         // Condicoes
         $blocks = [];
         $blocks[] = ['VALIDADE', 'Este orçamento é válido até ' . fmt_date($q['valid_until']) . '.'];
-        if ($q['payment_terms']) {
-            $blocks[] = ['FORMA DE PAGAMENTO', $q['payment_terms']];
+        if (self::paymentLine($q) !== '') {
+            $blocks[] = ['FORMA DE PAGAMENTO', self::paymentLine($q)];
         }
         if ($q['notes']) {
             $blocks[] = ['OBSERVAÇÕES', $q['notes']];

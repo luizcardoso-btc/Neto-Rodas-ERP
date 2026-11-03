@@ -176,6 +176,43 @@ final class SaleServiceTest extends TestCase
         $this->assertSame('ANA CAFÉ', upper(' ana café '));
     }
 
+    public function testPdvEmailIsOptional(): void
+    {
+        SaleService::assertPdvCustomer(['first_name' => 'ANA', 'tax_id' => '12345678909', 'phone' => '75999991111', 'zip' => '44020385', 'car' => 'POLO']);
+        $this->expectException(DomainException::class);
+        SaleService::assertPdvCustomer(['first_name' => 'ANA', 'email' => 'invalido', 'tax_id' => '12345678909', 'phone' => '75999991111', 'zip' => '44020385', 'car' => 'POLO']);
+    }
+
+    public function testQuoteCardInstallments(): void
+    {
+        $this->assertSame([['n' => 3, 'value' => 300.0]], \App\Quote::installmentPlan(900.0, 3));
+        $this->assertSame([['n' => 2, 'value' => 333.33], ['n' => 1, 'value' => 333.34]], \App\Quote::installmentPlan(1000.0, 3));
+        $id = \App\Quote::save(null, [
+            'customer_name' => 'joao', 'pay_method' => 'credito', 'installments' => '3',
+            'items' => [['category' => 'pneu', 'description' => 'PNEU 175/65 R15', 'quantity' => 1, 'unit_price' => '900,00']],
+        ], 'admin');
+        $q = \App\Quote::find($id);
+        $this->assertSame('Cartão de crédito em 3x: 3 parcelas de R$ 300,00 (total R$ 900,00)', \App\Quote::paymentLine($q));
+        $this->assertStringNotContainsString('http', \App\Quote::whatsappText($q));
+        $this->assertStringContainsString('3 parcelas de R$ 300,00', \App\Quote::whatsappText($q));
+        $this->assertStringStartsWith('%PDF', \App\Quote::pdf($q));
+    }
+
+    public function testQuoteToSalePrefillAndLink(): void
+    {
+        $pid = Database::insert("INSERT INTO products (name, category, condition_type, width, profile, rim, price, stock) VALUES ('175/65 R15','pneu','novo','175','65','15',900,5)");
+        $id = \App\Quote::save(null, [
+            'customer_name' => 'maria silva', 'customer_phone' => '75999991111', 'pay_method' => 'pix', 'discount' => '0',
+            'items' => [['category' => 'pneu', 'description' => 'PNEU 175/65 R15', 'quantity' => 1, 'unit_price' => '900,00'], ['category' => 'servico', 'description' => 'ALINHAMENTO', 'quantity' => 1, 'unit_price' => '80']],
+        ], 'admin');
+        $pre = \App\QuoteToSale::prefill($id);
+        $this->assertSame($pid, $pre['items'][0]['product_id']);
+        $this->assertNull($pre['items'][1]['product_id']);
+        $this->assertSame('pix', $pre['payments'][0]['method']);
+        $this->assertSame('980,00', $pre['payments'][0]['amount']);
+        $this->assertSame('MARIA', $pre['customer']['first_name']);
+    }
+
     public function testQuoteSaveAndPdf(): void
     {
         $id = \App\Quote::save(null, [

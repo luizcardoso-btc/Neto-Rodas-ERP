@@ -7,6 +7,13 @@ use App\SaleService;
 
 $old = $_SESSION['_old_sale'] ?? null;
 unset($_SESSION['_old_sale']);
+// Orcamento aprovado levado ao PDV: pre-preenche cliente, itens e pagamento (so no PDV de balcao).
+$fromQuote = null;
+if (!$old && ($source ?? '') === 'pdv' && !empty($_GET['quote'])) {
+    $fromQuote = App\QuoteToSale::prefill((int) $_GET['quote']);
+    $old = $fromQuote;
+}
+$quoteId = (int) ($old['quote_id'] ?? 0);
 $token = $old['request_token'] ?? uuid4();
 $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
 ?>
@@ -14,6 +21,8 @@ $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
   <?= App\Csrf::field() ?>
   <input type="hidden" name="action" value="sale">
   <input type="hidden" name="request_token" value="<?= e($token) ?>">
+  <?php if ($quoteId): ?><input type="hidden" name="quote_id" value="<?= $quoteId ?>">
+  <div class="flash ok" style="margin:0 0 14px">Venda do <b>orcamento #<?= e(str_pad((string) $quoteId, 4, '0', STR_PAD_LEFT)) ?></b>. Confira cliente, itens e pagamento; <?= $fromQuote && !empty($fromQuote['_unmatched']) ? '<b>escolha na lista o pneu/roda dos itens marcados</b>, ' : '' ?>edite o que precisar e finalize.</div><?php endif; ?>
 
   <div class="card">
     <h2>Cliente</h2>
@@ -25,9 +34,9 @@ $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
     <input type="hidden" name="customer[customer_id]" id="customer_id">
     <p class="small muted" style="margin:0 0 10px">Campos com * sao obrigatorios. Tudo e gravado em CAIXA ALTA.</p>
     <div class="row c2"><input name="customer[first_name]" placeholder="NOME *" autocomplete="off" required><input name="customer[last_name]" placeholder="SOBRENOME" autocomplete="off"></div>
-    <div class="row"><input name="customer[email]" type="email" placeholder="E-MAIL *" required></div>
+    <div class="row"><input name="customer[email]" type="email" placeholder="E-MAIL (opcional)"></div>
     <div class="row c2"><input name="customer[phone]" inputmode="tel" placeholder="TELEFONE (DDD) *" required minlength="10"><input name="customer[tax_id]" inputmode="numeric" placeholder="CPF/CNPJ *" required minlength="11"></div>
-    <div class="row c2"><input name="customer[zip]" inputmode="numeric" placeholder="CEP *" required minlength="8"><input name="customer[car]" placeholder="CARRO *" required></div>
+    <div class="row c2"><input name="customer[zip]" inputmode="numeric" placeholder="CEP *" required minlength="8" maxlength="9" autocomplete="postal-code"><input name="customer[car]" placeholder="CARRO *" required></div>
     <div class="row"><input name="notes" placeholder="OBSERVACOES"></div>
 
     <label class="flash ok" style="display:flex;gap:10px;align-items:center;cursor:pointer;margin:6px 0 10px">
@@ -35,7 +44,7 @@ $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
     </label>
     <fieldset style="border:1px solid var(--line);border-radius:16px;padding:14px;margin:0">
       <legend style="font-weight:700;padding:0 6px">Endereco do cliente</legend>
-      <p class="small muted" style="margin:0 0 10px">Opcional em venda comum (o CEP fica acima, obrigatorio). Logradouro, numero, bairro, cidade e UF sao obrigatorios quando NF-e estiver marcada.</p>
+      <p class="small muted" style="margin:0 0 10px">Preenchido sozinho ao digitar o CEP; confira e informe o numero. Logradouro, numero, bairro, cidade e UF sao obrigatorios quando NF-e estiver marcada.</p>
       <div class="row c2"><input name="customer[street]" placeholder="Logradouro"><input name="customer[number]" placeholder="Numero"></div>
       <div class="row c2"><input name="customer[district]" placeholder="Bairro"><input name="customer[city]" placeholder="Cidade"></div>
       <div class="row"><input name="customer[state]" maxlength="2" placeholder="UF"></div>
