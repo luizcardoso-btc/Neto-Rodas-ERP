@@ -292,4 +292,34 @@ final class SaleServiceTest extends TestCase
         $titles = array_column(\App\Finance::alerts($s), 'title');
         $this->assertContains('Contas a pagar vencidas', $titles);
     }
+
+    public function testCardMachineFeeIsSnapshottedAndDeductedFromProfit(): void
+    {
+        // venda de R$600 paga no cartao: cliente paga cheio, maquina azul 3x = 4,99%
+        $r = SaleService::create($this->sale(['payments' => [['method' => 'cartao', 'amount' => 600.0, 'machine_id' => 2, 'card_brand' => 'vm', 'card_inst' => '3']]]));
+        $p = Database::one('SELECT * FROM sale_payments WHERE sale_id = ?', [$r['id']]);
+        $this->assertSame(600.0, (float) $p['amount']);
+        $this->assertSame(4.99, (float) $p['fee_rate']);
+        $this->assertSame(29.94, (float) $p['fee_amount']);
+        $s = \App\Finance::summary(date('Y-m-d'), date('Y-m-d'), 1);
+        $this->assertSame(600.0, $s['revenue']);
+        $this->assertSame(29.94, $s['card_fees']);
+        $by = array_column(\App\CardFees::byMachine(date('Y-m-d'), date('Y-m-d')), 'fees', 'name');
+        $this->assertSame(29.94, (float) $by['MAQUINA AZUL']);
+        // mudar a tabela depois nao altera a taxa ja gravada
+        Database::run('UPDATE card_rates SET rate = 1 WHERE machine_id = 2');
+        $this->assertSame(29.94, \App\Finance::summary(date('Y-m-d'), date('Y-m-d'), 1)['card_fees']);
+    }
+
+    public function testCardPaymentWithMachineRequiresInstallments(): void
+    {
+        $this->expectException(\DomainException::class);
+        SaleService::create($this->sale(['payments' => [['method' => 'cartao', 'amount' => 600.0, 'machine_id' => 1, 'card_brand' => 'vm', 'card_inst' => '']]]));
+    }
+
+    public function testYellowMachineDebitUsesCvelozRate(): void
+    {
+        $f = \App\CardFees::resolve(['machine_id' => 1, 'card_brand' => 'elo', 'card_inst' => 'd'], 1000.0);
+        $this->assertSame(34.5, $f['fee_amount']);
+    }
 }

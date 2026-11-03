@@ -102,6 +102,7 @@
   const finOpts = FIN.map((f) => `<option value="${esc(f)}">${esc(f)}</option>`).join('');
   let rimOpts = ''; for (let r = RIMS[0]; r <= RIMS[1]; r++) rimOpts += `<option value="${r}">R${r}</option>`;
   if (!document.getElementById('wt-brands')) { const dl = document.createElement('datalist'); dl.id = 'wt-brands'; dl.innerHTML = BR.map((b) => `<option value="${esc(b)}">`).join(''); document.body.appendChild(dl); }
+  const CARD = JSON.parse(form.dataset.card || '{"machines":[],"rates":{}}');
   function addPayment(data = {}) {
     const i = seq++;
     const sel = (m) => (data.method === m ? 'selected' : '');
@@ -134,6 +135,7 @@
             <input name="payments[${i}][trade_qty]" type="number" min="1" placeholder="QTD. RECEBIDA" value="${esc(data.trade_qty || 1)}">
           </div>
         </div>
+        ${CardUI.html(i, data, CARD)}
         <label class="cred-box small" hidden><input type="checkbox" name="payments[${i}][to_creditor]" value="1" ${data.to_creditor ? 'checked' : ''} style="width:auto"> RECEBI NA MINHA CONTA E JA ENVIEI ESTE VALOR AO <b class="cred-name"></b></label>
         <div class="line-foot"><button type="button" class="rest" style="color:var(--brand-d)">= restante</button><button type="button" class="rm" style="color:var(--danger)">Remover</button></div>
       </div>`);
@@ -148,7 +150,9 @@
     const m0 = /^(.+?)\s+R(\d{2})\s+-\s+(.+)$/.exec(String(data.note || ''));
     if (m0 && data.trade_category === 'roda') { wBrand.value = m0[1]; wRim.value = m0[2]; wFin.value = m0[3]; }
     [wBrand, wRim, wFin].forEach((x) => x.addEventListener('input', () => { if (x === wBrand) x.value = x.value.toUpperCase(); compose(); recalc(); }));
+    const cardUpd = CardUI.wire(line, CARD, () => cents(amount.value));
     const sync = () => {
+      cardUpd(method.value === 'cartao');
       const isTrade = method.value === 'troca';
       trade.hidden = !isTrade; line.classList.toggle('trade-line', isTrade);
       const roda = tcat.value === 'roda';
@@ -167,10 +171,11 @@
     };
     tcat.addEventListener('change', sync);
     method.onchange = sync;
+    line.addEventListener('input', () => cardUpd(method.value === 'cartao'));
     line.querySelector('.rest').onclick = () => {
       const diff = totals().total - totals().paid + cents(amount.value);
       amount.value = diff > 0 ? (diff / 100).toFixed(2).replace('.', ',') : '';
-      recalc();
+      cardUpd(method.value === 'cartao'); recalc();
     };
     line.querySelector('.rm').onclick = () => { line.remove(); if (!paysBox.children.length) addPayment(); recalc(); };
     line.addEventListener('input', recalc);

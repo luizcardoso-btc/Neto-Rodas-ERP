@@ -83,8 +83,9 @@ final class SaleService
 
             foreach ($payments as $p) {
                 $payId = Database::insert(
-                    'INSERT INTO sale_payments (sale_id, method, amount, note, trade_qty, trade_category, to_creditor) VALUES (?,?,?,?,?,?,?)',
-                    [$saleId, $p['method'], $p['amount'], $p['note'], $p['method'] === 'troca' ? $p['trade_qty'] : 1, $p['method'] === 'troca' ? $p['trade_category'] : null, $p['to_creditor'] ? 1 : 0]
+                    'INSERT INTO sale_payments (sale_id, method, amount, note, trade_qty, trade_category, to_creditor, machine_id, card_brand, card_kind, card_installments, fee_rate, fee_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    [$saleId, $p['method'], $p['amount'], $p['note'], $p['method'] === 'troca' ? $p['trade_qty'] : 1, $p['method'] === 'troca' ? $p['trade_category'] : null, $p['to_creditor'] ? 1 : 0,
+                        $p['machine_id'], $p['card_brand'], $p['card_kind'], $p['card_installments'], $p['fee_rate'], $p['fee_amount']]
                 );
                 if ($p['method'] === 'troca') {
                     $tradePid = self::receiveTradeIn($saleId, $p);
@@ -266,13 +267,15 @@ final class SaleService
                         $tradePid = self::receiveTradeIn($saleId, $p);
                     }
                     Database::run(
-                        'UPDATE sale_payments SET method = ?, amount = ?, note = ?, trade_qty = ?, product_id = ?, trade_category = ?, to_creditor = ? WHERE id = ?',
-                        [$p['method'], $p['amount'], $p['note'], $qty, $isTrade ? $tradePid : null, $isTrade ? $p['trade_category'] : null, $p['to_creditor'] ? 1 : 0, $oldPay['id']]
+                        'UPDATE sale_payments SET method = ?, amount = ?, note = ?, trade_qty = ?, product_id = ?, trade_category = ?, to_creditor = ?, machine_id = ?, card_brand = ?, card_kind = ?, card_installments = ?, fee_rate = ?, fee_amount = ? WHERE id = ?',
+                        [$p['method'], $p['amount'], $p['note'], $qty, $isTrade ? $tradePid : null, $isTrade ? $p['trade_category'] : null, $p['to_creditor'] ? 1 : 0,
+                            $p['machine_id'], $p['card_brand'], $p['card_kind'], $p['card_installments'], $p['fee_rate'], $p['fee_amount'], $oldPay['id']]
                     );
                 } else {
                     $payId = Database::insert(
-                        'INSERT INTO sale_payments (sale_id, method, amount, note, trade_qty, trade_category, to_creditor) VALUES (?,?,?,?,?,?,?)',
-                        [$saleId, $p['method'], $p['amount'], $p['note'], $qty, $isTrade ? $p['trade_category'] : null, $p['to_creditor'] ? 1 : 0]
+                        'INSERT INTO sale_payments (sale_id, method, amount, note, trade_qty, trade_category, to_creditor, machine_id, card_brand, card_kind, card_installments, fee_rate, fee_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                        [$saleId, $p['method'], $p['amount'], $p['note'], $qty, $isTrade ? $p['trade_category'] : null, $p['to_creditor'] ? 1 : 0,
+                            $p['machine_id'], $p['card_brand'], $p['card_kind'], $p['card_installments'], $p['fee_rate'], $p['fee_amount']]
                     );
                     if ($isTrade) {
                         Database::run('UPDATE sale_payments SET product_id = ? WHERE id = ?', [self::receiveTradeIn($saleId, $p), $payId]);
@@ -499,8 +502,12 @@ final class SaleService
             if (!isset(self::TRADE_CATEGORIES[$tc])) {
                 $tc = 'pneu';
             }
+            $card = ['machine_id' => null, 'card_brand' => null, 'card_kind' => null, 'card_installments' => null, 'fee_rate' => null, 'fee_amount' => 0.0];
+            if ($method === 'cartao' && !empty($r['machine_id'])) {
+                $card = CardFees::resolve($r, $amount); // maquina escolhida: grava a taxa vigente
+            }
             $out[] = ['method' => $method, 'amount' => $amount, 'note' => $note, 'trade_qty' => max(1, (int) ($r['trade_qty'] ?? 1)), 'trade_category' => $tc,
-                'to_creditor' => !empty($r['to_creditor']) && in_array($method, ['dinheiro', 'pix', 'cartao'], true)];
+                'to_creditor' => !empty($r['to_creditor']) && in_array($method, ['dinheiro', 'pix', 'cartao'], true)] + $card;
         }
         if (!$out) {
             throw new DomainException('Informe como o cliente pagou.');

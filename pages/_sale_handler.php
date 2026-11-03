@@ -21,6 +21,9 @@ $payments = array_map(fn ($r) => [
     'trade_qty' => (int) ($r['trade_qty'] ?? 1),
     'trade_category' => (string) ($r['trade_category'] ?? 'pneu'),
     'to_creditor' => !empty($r['to_creditor']),
+    'machine_id' => (int) ($r['machine_id'] ?? 0),
+    'card_brand' => (string) ($r['card_brand'] ?? 'vm'),
+    'card_inst' => (string) ($r['card_inst'] ?? ''),
 ], $rows('payments'));
 
 $data = [
@@ -55,6 +58,11 @@ try {
         }
     }
     SaleService::assertPdvCustomer($data['customer']);
+    foreach ($payments as $pay) {
+        if ($pay['method'] === 'cartao' && $pay['amount'] > 0) {
+            App\CardFees::resolve($pay, $pay['amount']); // exige maquina, bandeira e parcelas no cartao
+        }
+    }
     foreach ($payments as $pay) {
         if ($pay['method'] === 'troca' && !isset(SaleService::TRADE_CATEGORIES[$pay['trade_category']])) {
             throw new DomainException('Na troca, escolha se e Roda ou Pneu.');

@@ -17,7 +17,7 @@ $quoteId = (int) ($old['quote_id'] ?? 0);
 $token = $old['request_token'] ?? uuid4();
 $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
 ?>
-<form method="post" id="sale-form" class="caps" data-lookup="<?= e($lookupBase) ?>" data-finishes="<?= e(json_encode(App\Wheel::FINISHES)) ?>" data-brands="<?= e(json_encode(App\Wheel::brands())) ?>" data-rims="<?= e(json_encode([App\Wheel::RIM_MIN, App\Wheel::RIM_MAX])) ?>" data-creditor="<?= e(App\Settings::all()['creditor_name']) ?>" data-old="<?= e(json_encode($old, JSON_UNESCAPED_UNICODE) ?: 'null') ?>" novalidate>
+<form method="post" id="sale-form" class="caps" data-lookup="<?= e($lookupBase) ?>" data-finishes="<?= e(json_encode(App\Wheel::FINISHES)) ?>" data-brands="<?= e(json_encode(App\Wheel::brands())) ?>" data-rims="<?= e(json_encode([App\Wheel::RIM_MIN, App\Wheel::RIM_MAX])) ?>" data-card="<?= e(json_encode(['machines' => App\CardFees::machines(), 'rates' => App\CardFees::rateMap() ?: new stdClass()])) ?>" data-creditor="<?= e(App\Settings::all()['creditor_name']) ?>" data-old="<?= e(json_encode($old, JSON_UNESCAPED_UNICODE) ?: 'null') ?>" novalidate>
   <?= App\Csrf::field() ?>
   <input type="hidden" name="action" value="sale">
   <input type="hidden" name="request_token" value="<?= e($token) ?>">
@@ -86,4 +86,5 @@ $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
 
   <button class="btn green block" type="submit" id="submit">Finalizar venda</button>
 </form>
+<script src="<?= e(asset('cardfees.js')) ?>"></script>
 <script src="<?= e(asset('sale.js')) ?>"></script>

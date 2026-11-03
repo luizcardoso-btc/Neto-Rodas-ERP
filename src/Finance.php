@@ -42,8 +42,10 @@ final class Finance
         $r = Database::one('SELECT COUNT(*) n, COALESCE(SUM(total),0) revenue FROM sales WHERE ' . self::dateRange('created_at'), $a);
         $revenue = (float) $r['revenue'];
         $cmv = (float) Database::value('SELECT COALESCE(SUM(i.quantity * i.unit_cost),0) FROM sale_items i JOIN sales s ON s.id = i.sale_id WHERE ' . self::dateRange('s.created_at'), $a);
-        $cardBase = (float) Database::value("SELECT COALESCE(SUM(p.amount),0) FROM sale_payments p JOIN sales s ON s.id = p.sale_id WHERE p.method = 'cartao' AND " . self::dateRange('s.created_at'), $a);
-        $cardFees = round($cardBase * (float) $cfg['card_fee_rate'] / 100, 2);
+        // Taxa real das maquinas (gravada em cada pagamento) + aliquota geral so para cartao sem maquina (vendas antigas).
+        $cardReal = (float) Database::value("SELECT COALESCE(SUM(p.fee_amount),0) FROM sale_payments p JOIN sales s ON s.id = p.sale_id WHERE p.method = 'cartao' AND p.machine_id IS NOT NULL AND " . self::dateRange('s.created_at'), $a);
+        $cardBase = (float) Database::value("SELECT COALESCE(SUM(p.amount),0) FROM sale_payments p JOIN sales s ON s.id = p.sale_id WHERE p.method = 'cartao' AND p.machine_id IS NULL AND " . self::dateRange('s.created_at'), $a);
+        $cardFees = round($cardReal + $cardBase * (float) $cfg['card_fee_rate'] / 100, 2);
         $weekly = (float) Database::value('SELECT COALESCE(SUM(weekly_pay),0) FROM sellers WHERE active = 1');
         $payroll = Reports::payroll($weekly, $days);
         $paid = fn (string $kind) => (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind = ? AND ' . self::dateRange('paid_at'), array_merge([$kind], $a));
@@ -77,7 +79,7 @@ final class Finance
         $rows = [
             ['Custo das mercadorias', $s['cmv'], '#2f6fd6', 'custo cadastrado nos itens vendidos'],
             ['Impostos pagos', $s['taxes'], '#f97316', 'DAS, ICMS etc. lançados como pagos'],
-            ['Taxas do cartão', $s['card_fees'], '#14b8a6', 'alíquota configurada em Custos e taxas'],
+            ['Taxas do cartão', $s['card_fees'], '#14b8a6', 'taxa de cada máquina (amarela/azul) por parcela'],
             ['Folha dos vendedores', $s['payroll'], '#f59e0b', 'semanal ÷ 7 × dias do período'],
             ['Despesas operacionais', $s['expenses'], '#e879a6', 'despesas pagas no período'],
         ];

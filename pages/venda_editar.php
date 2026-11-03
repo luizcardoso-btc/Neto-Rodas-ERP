@@ -46,6 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
                 'trade_qty' => (int) ($r['trade_qty'] ?? 1),
                 'trade_category' => (string) ($r['trade_category'] ?? 'pneu'),
                 'to_creditor' => !empty($r['to_creditor']),
+                'machine_id' => (int) ($r['machine_id'] ?? 0),
+                'card_brand' => (string) ($r['card_brand'] ?? 'vm'),
+                'card_inst' => (string) ($r['card_inst'] ?? ''),
             ], $rows('payments')),
         ], Auth::user());
         flash('ok', "Venda #$saleId atualizada.");
@@ -71,6 +74,7 @@ $itemRows = $posted ? array_values(array_filter((array) ($posted['items'] ?? [])
 ], $items);
 $payRows = $posted ? array_values(array_filter((array) ($posted['payments'] ?? []), 'is_array')) : array_map(fn ($p) => [
     'id' => $p['id'], 'method' => $p['method'], 'amount' => $num($p['amount']), 'note' => $p['note'], 'trade_qty' => $p['trade_qty'], 'trade_category' => $p['trade_category'] ?: 'pneu', 'to_creditor' => (int) $p['to_creditor'],
+    'machine_id' => $p['machine_id'], 'card_brand' => $p['card_brand'] ?: 'vm', 'card_inst' => $p['card_kind'] === 'debito' ? 'd' : (string) ($p['card_installments'] ?? ''),
 ], $pays);
 $status = $pv('payment_status', $sale['payment_status']);
 $nfe = $posted ? !empty($posted['wants_nfe']) : (bool) $sale['wants_nfe'];
@@ -109,11 +113,13 @@ $nfe = $posted ? !empty($posted['wants_nfe']) : (bool) $sale['wants_nfe'];
 </form>
 <?php if ($audit): ?><div class="card"><h2>Historico de edicoes</h2><table><tbody>
   <?php foreach ($audit as $a): ?><tr><td><?= e(fmt_date($a['created_at'], true)) ?></td><td><?= e($a['username'] ?: '-') ?></td><td><?= e($a['summary']) ?></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
+<script src="<?= e(asset('cardfees.js')) ?>"></script>
 <script>
 (function () {
   const PRODUCTS = <?= json_encode(array_map(fn ($p) => ['id' => (int) $p['id'], 'label' => $p['name'] . ($p['condition_type'] === 'usado' ? ' (usado)' : '') . ' - estoque ' . (int) $p['stock']], $products), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
   const ITEMS = <?= json_encode($itemRows, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
   const PAYS = <?= json_encode($payRows, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+  const CARD = <?= json_encode(['machines' => App\CardFees::machines(), 'rates' => App\CardFees::rateMap() ?: new stdClass()], JSON_HEX_TAG) ?>;
   const METHODS = ['dinheiro', 'pix', 'cartao', 'prazo', 'troca'];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const cents = (v) => { v = String(v || '').trim().replace(/[^\d,.\-]/g, ''); if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.'); const n = parseFloat(v); return isNaN(n) ? 0 : Math.round(n * 100); };
@@ -143,10 +149,13 @@ $nfe = $posted ? !empty($posted['wants_nfe']) : (bool) $sale['wants_nfe'];
         <input name="payments[${i}][note]" placeholder="Obs. (na troca: medida do pneu, ex.: 175/65 R14)" value="${esc(d.note)}">
         <select name="payments[${i}][trade_category]" class="tc"><option value="pneu" ${d.trade_category !== 'roda' ? 'selected' : ''}>Pneu · usado</option><option value="roda" ${d.trade_category === 'roda' ? 'selected' : ''}>Roda · usada</option></select>
         <input name="payments[${i}][trade_qty]" type="number" min="1" placeholder="Qtd. (troca)" value="${esc(d.trade_qty || 1)}"></div>
+      ${CardUI.html(i, d, CARD)}
       <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="cred" name="payments[${i}][to_creditor]" value="1" style="width:auto" ${d.to_creditor ? 'checked' : ''}> Enviado ao credor</label>
       <div class="line-foot"><span class="small trade-hint"></span><button type="button" class="rm" style="color:var(--danger)">Remover</button></div></div>`);
     const sel = line.querySelector('select'), hint = line.querySelector('.trade-hint'), qty = line.querySelector('[name$="[trade_qty]"]'), tc = line.querySelector('.tc');
-    const sync = () => { const t = sel.value === 'troca'; line.classList.toggle('trade-line', t); qty.hidden = !t; tc.hidden = !t; hint.innerHTML = t ? '<span class="dot"></span>Usado: entra na categoria e no estoque de usados' : ''; };
+    const cardUpd = CardUI.wire(line, CARD, () => cents(line.querySelector('[name$="[amount]"]').value));
+    line.addEventListener('input', () => cardUpd(sel.value === 'cartao'));
+    const sync = () => { cardUpd(sel.value === 'cartao'); const t = sel.value === 'troca'; line.classList.toggle('trade-line', t); qty.hidden = !t; tc.hidden = !t; hint.innerHTML = t ? '<span class="dot"></span>Usado: entra na categoria e no estoque de usados' : ''; };
     sel.onchange = () => { sync(); calc(); }; sync();
     line.querySelector('.rm').onclick = () => { line.remove(); calc(); };
     line.addEventListener('input', calc);

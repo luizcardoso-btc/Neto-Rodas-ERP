@@ -76,6 +76,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'delete_creditor' && Auth::isAdmin()) {
             Database::run("DELETE FROM creditor_payments WHERE id = ? AND source = 'manual'", [(int) $_POST['id']]);
             flash('ok', 'Repasse removido.');
+        } elseif ($action === 'save_rates' && Auth::isAdmin()) {
+            App\CardFees::saveRates($_POST);
+            flash('ok', 'Tabela de taxas das máquinas atualizada (vale para as próximas vendas).');
         } elseif ($action === 'save_costs' && Auth::isAdmin()) {
             Settings::save(array_intersect_key($_POST, array_flip(['tax_rate', 'card_fee_rate', 'creditor_name', 'creditor_monthly_goal'])));
             flash('ok', 'Custos e taxas atualizados.');
@@ -258,11 +261,25 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
     <?php fin_table($ar, 'accounts_receivable', true, 'receber'); ?></div>
 
 <?php else: /* custos */ ?>
+  <?php fin_period_bar('custos', $pkey, $cm, $range); $byM = App\CardFees::byMachine($range['from'], $range['to']); $machines = App\CardFees::machines(false); $rm = App\CardFees::rateMap(); ?>
+  <div class="card"><h2>Taxas das máquinas no período</h2><p class="sub">O cliente paga o valor cheio; a máquina repassa menos. A diferença abaixo já é abatida do lucro no balanço da loja.</p>
+    <div class="tiles"><?php foreach ($byM as $m): ?><div class="tile"><span><?= e($m['name']) ?></span><b><?= money((float) $m['fees']) ?></b><small><?= (int) $m['n'] ?> pagamento(s) · passou <?= money((float) $m['gross']) ?> · loja recebe <?= money((float) $m['gross'] - (float) $m['fees']) ?></small></div><?php endforeach; ?>
+      <div class="tile"><span>Total de taxas (resultado)</span><b><?= money($s['card_fees']) ?></b><small>já descontado em Lucro estimado</small></div></div></div>
+  <?php if (Auth::isAdmin()): ?>
+  <form method="post" class="card stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="save_rates"><input type="hidden" name="tab" value="custos">
+    <h2>Tabela de taxas por máquina</h2><p class="sub">Percentual cobrado por bandeira e parcela. Alterar vale só para vendas novas; as já feitas guardam a taxa da época. Deixe em branco o que não existir.</p>
+    <?php foreach ($machines as $m): ?><details <?= $m === $machines[0] ? 'open' : '' ?> style="margin-bottom:10px"><summary><b><?= e($m['name']) ?></b></summary>
+      <div class="row c2" style="margin:10px 0"><div><label class="f">Nome da máquina</label><input name="machine_name[<?= (int) $m['id'] ?>]" value="<?= e($m['name']) ?>"></div></div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Bandeira</th><th>Débito</th><?php for ($n = 1; $n <= 12; $n++): ?><th><?= $n ?>x</th><?php endfor; ?></tr></thead><tbody>
+      <?php foreach (App\CardFees::BRANDS as $bk => $bl): ?><tr><td><?= e($bl) ?></td>
+        <?php foreach (array_merge(['d'], range(1, 12)) as $c): $v = $rm[$m['id']][$bk][(string) $c] ?? null; ?><td><input style="width:64px" inputmode="decimal" name="rate[<?= (int) $m['id'] ?>][<?= $bk ?>][<?= $c ?>]" value="<?= $v === null ? '' : e(number_format($v, 2, ',', '')) ?>"></td><?php endforeach; ?></tr><?php endforeach; ?></tbody></table></div></details><?php endforeach; ?>
+    <button class="btn green" type="submit">Salvar tabela de taxas</button></form>
+  <?php endif; ?>
   <div class="card caps" style="max-width:680px"><h2>Custos e taxas</h2><p class="sub">Parâmetros usados nas estimativas do financeiro e nos alertas do contador virtual.</p>
     <?php if (!Auth::isAdmin()): ?><p class="muted">Somente o administrador pode alterar.</p><?php endif; ?>
     <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="save_costs"><input type="hidden" name="tab" value="custos">
       <div class="row c2"><div><label class="f" for="tr">Imposto sobre vendas (%)</label><input id="tr" name="tax_rate" inputmode="decimal" value="<?= e(number_format((float) $cfg['tax_rate'], 2, ',', '')) ?>" <?= Auth::isAdmin() ? '' : 'disabled' ?>></div>
-        <div><label class="f" for="cf">Taxa do cartão (%)</label><input id="cf" name="card_fee_rate" inputmode="decimal" value="<?= e(number_format((float) $cfg['card_fee_rate'], 2, ',', '')) ?>" <?= Auth::isAdmin() ? '' : 'disabled' ?>></div></div>
+        <div><label class="f" for="cf">Taxa geral do cartão (%) — só vendas antigas sem máquina</label><input id="cf" name="card_fee_rate" inputmode="decimal" value="<?= e(number_format((float) $cfg['card_fee_rate'], 2, ',', '')) ?>" <?= Auth::isAdmin() ? '' : 'disabled' ?>></div></div>
       <div class="row c2"><div><label class="f" for="cn">Nome do credor</label><input id="cn" name="creditor_name" value="<?= e($cfg['creditor_name']) ?>" <?= Auth::isAdmin() ? '' : 'disabled' ?>></div>
         <div><label class="f" for="cg">Meta mensal do credor (R$)</label><input id="cg" name="creditor_monthly_goal" inputmode="decimal" value="<?= e(number_format((float) $cfg['creditor_monthly_goal'], 2, ',', '')) ?>" <?= Auth::isAdmin() ? '' : 'disabled' ?>></div></div>
       <p class="small muted">A folha dos vendedores vem do pagamento semanal cadastrado em Vendedores (proporcional aos dias do período). Taxa do cartão incide sobre pagamentos em cartão; imposto estimado = % sobre a receita (o lucro usa os impostos efetivamente pagos).</p>
