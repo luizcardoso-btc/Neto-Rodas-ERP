@@ -73,6 +73,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $k = in_array($_POST['kind'] ?? '', ['despesa', 'ativo'], true) ? $_POST['kind'] : 'despesa';
             Database::run("UPDATE accounts_payable SET kind = ? WHERE id = ? AND kind <> 'imposto'", [$k, (int) ($_POST['id'] ?? 0)]);
             flash('ok', $k === 'ativo' ? 'Movido para Mercadorias (ativos): abate da receita bruta.' : 'Movido para Despesas operacionais.');
+        } elseif ($action === 'wipe_fin' && Auth::isAdmin()) {
+            if (strtoupper(trim((string) ($_POST['confirm'] ?? ''))) !== 'APAGAR') {
+                throw new DomainException('Digite APAGAR para confirmar.');
+            }
+            $d = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['since'] ?? '') ? $_POST['since'] : date('Y-m-d');
+            // so lancamentos feitos a partir da data: despesas, impostos, mercadorias e folha. Vendas nao sao tocadas.
+            $n1 = Database::run('DELETE FROM accounts_payable WHERE created_at >= ?', [$d . ' 00:00:00']);
+            $n2 = Database::run('DELETE FROM payroll_payments WHERE created_at >= ?', [$d . ' 00:00:00']);
+            flash('ok', "Apagados $n1 lancamento(s) de despesas/impostos/mercadorias e $n2 pagamento(s) de folha lancados desde " . date('d/m/Y', strtotime($d)) . '. As vendas foram mantidas.');
         } elseif ($action === 'add_receivable') {
             $amount = parse_money($_POST['amount'] ?? 0);
             $desc = upper((string) ($_POST['description'] ?? ''));
@@ -260,6 +269,10 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
       <h3 style="margin:16px 0 6px;font-size:14px">Pagos no período: <?= money($s['payroll']) ?></h3>
       <?php foreach ($pr as $x): ?><div class="exp-row"><div><b><?= e($x['employee']) ?></b><br><span class="small muted">pago em <?= e(fmt_date($x['paid_on'])) ?><?= $x['week_start'] ? ' · semana de ' . e(fmt_date($x['week_start'])) : '' ?></span></div><b><?= money($x['amount']) ?></b><form method="post" style="margin:0" onsubmit="return confirm('Remover pagamento?')"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="delete_payroll"><input type="hidden" name="id" value="<?= (int) $x['id'] ?>"><button class="btn danger sm" type="submit">×</button></form></div><?php endforeach; ?>
       <?php if (!$pr): ?><p class="muted">Nenhum pagamento de folha neste período.</p><?php endif; ?></div>
+    <?php if (Auth::isAdmin()): ?><div class="card"><h2>Zerar lançamentos de hoje</h2><p class="sub">Apaga despesas, impostos, boletos de mercadoria e folha <b>lançados</b> a partir da data abaixo. <b>Vendas não são alteradas.</b></p>
+      <form method="post" class="stack" onsubmit="return confirm('Apagar os lancamentos financeiros desde a data escolhida? Vendas serao mantidas.')"><?= App\Csrf::field() ?><input type="hidden" name="action" value="wipe_fin"><input type="hidden" name="tab" value="despesas">
+        <div class="row c2"><div><label class="f" for="wsince">Lançados desde</label><input id="wsince" type="date" name="since" value="<?= e(date('Y-m-d')) ?>"></div><div><label class="f" for="wconf">Digite APAGAR</label><input id="wconf" name="confirm" autocomplete="off" required></div></div>
+        <button class="btn danger" type="submit">Apagar lançamentos financeiros</button></form></div><?php endif; ?>
     <div class="card"><h2>Despesas do período</h2><p class="sub"><?= count($items) ?> lançamento(s) pago(s) entre <?= e(fmt_date($range['from'])) ?> e <?= e(fmt_date($range['to'])) ?></p>
       <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><form method="post" style="margin:0"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="set_kind"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><?php if ($i['kind'] === 'despesa'): ?><input type="hidden" name="kind" value="ativo"><button class="btn ghost sm" type="submit" title="É compra de mercadoria? Abate da receita bruta">→ mercadoria</button><?php elseif ($i['kind'] === 'ativo'): ?><input type="hidden" name="kind" value="despesa"><button class="btn ghost sm" type="submit">→ despesa</button><?php endif; ?></form><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
       <?php if (!$items): ?><p class="muted">Nenhuma despesa paga neste período.</p><?php endif; ?>
