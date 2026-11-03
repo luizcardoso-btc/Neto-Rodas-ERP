@@ -45,13 +45,13 @@ final class Reports
             "SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind <> 'ativo' AND paid_at >= ? AND paid_at < DATE_ADD(?, INTERVAL 1 DAY)",
             [$p['start'], $p['end']]
         );
-        // boletos de mercadoria (ativos) abatem da receita bruta no lugar do custo cadastrado
+        // boletos de mercadoria (ativos): informativos, o custo vem dos itens vendidos
         $assets = (float) Database::value(
             "SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind = 'ativo' AND paid_at >= ? AND paid_at < DATE_ADD(?, INTERVAL 1 DAY)",
             [$p['start'], $p['end']]
         );
         $revenue = (float) $r['revenue'];
-        $profit = round($revenue - $assets - $payroll - $expenses, 2);
+        $profit = round($revenue - $cmv - $payroll - $expenses, 2);
 
         return [
             'period' => $p, 'sales' => (int) $r['n'], 'revenue' => $revenue,

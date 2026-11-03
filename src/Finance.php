@@ -52,14 +52,14 @@ final class Finance
         $payroll = (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM payroll_payments WHERE paid_on >= ? AND paid_on <= ?', $a); // pagamentos semanais lancados
         $paid = fn (string $kind) => (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM accounts_payable WHERE kind = ? AND ' . self::dateRange('paid_at'), array_merge([$kind], $a));
         $expenses = $paid('despesa');
-        $assets = $paid('ativo'); // boletos de mercadoria (pneus/rodas): abatem da receita bruta, nao sao despesa operacional
+        $assets = $paid('ativo'); // boletos de mercadoria (pneus/rodas): informativo, fora das despesas operacionais
         $taxes = $paid('imposto');
         $creditor = (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM creditor_payments WHERE paid_on >= ? AND paid_on <= ?', $a);
-        $gross = round($revenue - $assets - $cardFees - $taxes, 2);
+        $gross = round($revenue - $cmv - $cardFees - $taxes, 2); // custo cadastrado dos itens vendidos; boletos de ativos sao so informativos
         $profit = round($gross - $expenses - $payroll, 2);
 
         // Ponto de equilibrio: custos fixos / margem de contribuicao.
-        $contribution = $revenue > 0 ? ($revenue - $assets - $cardFees) / $revenue : 0.0;
+        $contribution = $revenue > 0 ? ($revenue - $cmv - $cardFees) / $revenue : 0.0;
         $fixed = $expenses + $taxes + $payroll;
         $breakeven = $contribution > 0 ? round($fixed / $contribution, 2) : null;
 
@@ -80,7 +80,7 @@ final class Finance
     public static function breakdown(array $s): array
     {
         $rows = [
-            ['Compra de mercadorias (ativos)', $s['assets'], '#2f6fd6', 'boletos de pneus/rodas pagos no período'],
+            ['Custo das mercadorias', $s['cmv'], '#2f6fd6', 'custo cadastrado nos itens vendidos'],
             ['Impostos pagos', $s['taxes'], '#f97316', 'DAS, ICMS etc. lançados como pagos'],
             ['Taxas do cartão', $s['card_fees'], '#14b8a6', 'taxa de cada máquina (amarela/azul) por parcela'],
             ['Folha dos vendedores', $s['payroll'], '#f59e0b', 'pagamentos semanais lançados no período'],

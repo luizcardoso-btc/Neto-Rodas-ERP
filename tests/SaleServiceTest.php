@@ -324,7 +324,7 @@ final class SaleServiceTest extends TestCase
         $this->assertSame(34.5, $f['fee_amount']);
     }
 
-    public function testAssetBoletosReduceGrossRevenueNotOperatingExpenses(): void
+    public function testAssetBoletosStayOutOfOperatingExpenses(): void
     {
         SaleService::create($this->sale()); // receita 600
         $today = date('Y-m-d H:i:s');
@@ -333,8 +333,8 @@ final class SaleServiceTest extends TestCase
         $s = \App\Finance::summary(date('Y-m-d'), date('Y-m-d'), 1);
         $this->assertSame(250.0, $s['assets']);
         $this->assertSame(100.0, $s['expenses']);
-        $this->assertSame(350.0, $s['gross']);   // 600 - 250
-        $this->assertSame(250.0, $s['profit']);  // 350 - 100 de despesa operacional (folha 0)
+        $this->assertSame(200.0, $s['gross']);   // 600 - 400 de custo das mercadorias vendidas (boleto nao entra)
+        $this->assertSame(100.0, $s['profit']);  // 200 - 100 de despesa operacional (folha 0)
     }
 
     public function testWeeklyPayrollPaymentsReduceFinalProfit(): void
@@ -344,7 +344,7 @@ final class SaleServiceTest extends TestCase
         Database::run("INSERT INTO payroll_payments (employee, amount, week_start, paid_on) VALUES ('MARIA', 100, CURDATE(), CURDATE())");
         $s = \App\Finance::summary(date('Y-m-d'), date('Y-m-d'), 1);
         $this->assertSame(250.0, $s['payroll']);
-        $this->assertSame(600.0, $s['gross']);
-        $this->assertSame(350.0, $s['profit']);
+        $this->assertSame(200.0, $s['gross']);
+        $this->assertSame(-50.0, $s['profit']);
     }
 }

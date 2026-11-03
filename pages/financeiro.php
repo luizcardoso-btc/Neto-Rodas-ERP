@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     [mb_substr($desc, 0, 200), $cat, $kind, $amount, $due, $paidAt]
                 );
             }
-            flash('ok', $kind === 'imposto' ? 'Pagamento de imposto lancado.' : ($kind === 'ativo' ? 'Boleto de mercadoria lancado (abate da receita bruta).' : ($repeat > 1 ? "Despesa lancada ($repeat meses)." : 'Despesa lancada.')));
+            flash('ok', $kind === 'imposto' ? 'Pagamento de imposto lancado.' : ($kind === 'ativo' ? 'Boleto de mercadoria lancado (fica fora das despesas operacionais).' : ($repeat > 1 ? "Despesa lancada ($repeat meses)." : 'Despesa lancada.')));
         } elseif ($action === 'add_payroll') {
             $amount = parse_money($_POST['amount'] ?? 0);
             $paidOn = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['paid_on'] ?? '') ? $_POST['paid_on'] : date('Y-m-d');
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'set_kind') {
             $k = in_array($_POST['kind'] ?? '', ['despesa', 'ativo'], true) ? $_POST['kind'] : 'despesa';
             Database::run("UPDATE accounts_payable SET kind = ? WHERE id = ? AND kind <> 'imposto'", [$k, (int) ($_POST['id'] ?? 0)]);
-            flash('ok', $k === 'ativo' ? 'Movido para Mercadorias (ativos): abate da receita bruta.' : 'Movido para Despesas operacionais.');
+            flash('ok', $k === 'ativo' ? 'Movido para Mercadorias (ativos): sai das despesas operacionais.' : 'Movido para Despesas operacionais.');
         } elseif ($action === 'wipe_fin' && Auth::isAdmin()) {
             if (strtoupper(trim((string) ($_POST['confirm'] ?? ''))) !== 'APAGAR') {
                 throw new DomainException('Digite APAGAR para confirmar.');
@@ -147,8 +147,8 @@ function fin_kpis(array $s, string $base): void
 { ?>
   <div class="fin-kpis">
     <div class="kpi"><span>Receita bruta</span><strong><?= money($s['revenue']) ?></strong><small><?= (int) $s['sales'] ?> venda(s) · ticket <?= money($s['ticket']) ?></small></div>
-    <div class="kpi"><span>Despesas de ativos</span><strong><?= money($s['assets']) ?></strong><small>boletos de pneus/rodas pagos · abate da receita bruta</small></div>
-    <div class="kpi"><span>Lucro bruto</span><strong class="ok"><?= money($s['gross']) ?></strong><small>receita − mercadorias (ativos) − taxas − impostos</small></div>
+    <div class="kpi"><span>Despesas de ativos</span><strong><?= money($s['assets']) ?></strong><small>boletos de pneus/rodas pagos no período (informativo)</small></div>
+    <div class="kpi"><span>Lucro bruto</span><strong class="ok"><?= money($s['gross']) ?></strong><small>receita − custo das mercadorias vendidas − taxas − impostos</small></div>
     <div class="kpi"><span>Despesas operacionais</span><strong><?= money($s['expenses'] + $s['payroll']) ?></strong><small>despesas <?= money($s['expenses']) ?> + folha semanal <?= money($s['payroll']) ?></small></div>
     <div class="kpi final <?= $s['profit'] < 0 ? 'neg' : '' ?>"><span>Lucro estimado final</span><strong class="<?= $s['profit'] < 0 ? 'neg' : 'ok' ?>"><?= money($s['profit']) ?></strong><small>margem <?= number_format($s['margin'], 1, ',', '.') ?>%</small></div>
   </div>
@@ -225,7 +225,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
   $maxItem = max(1, ...array_map(fn ($i) => (float) $i['amount'], $items ?: [['amount' => 1]]));
   $ap = Database::all('SELECT * FROM accounts_payable WHERE paid_at IS NULL ORDER BY due_date IS NULL, due_date LIMIT 100'); ?>
   <div class="fin-kpis">
-    <div class="kpi"><span>Mercadorias pagas (ativos)</span><strong><?= money($s['assets']) ?></strong><small>abate da receita bruta, não do lucro</small></div>
+    <div class="kpi"><span>Mercadorias pagas (ativos)</span><strong><?= money($s['assets']) ?></strong><small>controle de compras: não entra como despesa operacional</small></div>
     <div class="kpi"><span>Despesas operacionais pagas</span><strong><?= money($s['expenses']) ?></strong><small><?= count($cats) ?> categoria(s)</small></div>
     <div class="kpi"><span>Impostos pagos no período</span><strong class="bad"><?= money($s['taxes']) ?></strong><small>estimado: <?= money($s['tax_estimated']) ?> (<?= number_format((float) $cfg['tax_rate'], 2, ',', '.') ?>%)</small></div>
     <div class="kpi"><span>Folha dos vendedores</span><strong><?= money($s['payroll']) ?></strong><small>pagos no período (previsto por semana: <?= money($s['weekly_total']) ?>)</small></div>
@@ -239,7 +239,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
         <div class="row c2"><div><label class="f" for="due1">Vencimento / data</label><input id="due1" type="date" name="due_date"></div><div><label class="f" for="rep">Repetir (meses)</label><input id="rep" type="number" name="repeat" min="1" max="12" value="1"></div></div>
         <label class="chk"><input type="checkbox" name="paid" value="1"> Já paga</label>
         <button class="btn green block" type="submit">Lançar despesa</button></form></div>
-    <div class="card caps"><h2>Boletos de mercadoria (ativos)</h2><p class="sub">Compra de pneus, rodas e parafusos dos fornecedores. Abate da <b>receita bruta</b>, não entra como despesa operacional.</p>
+    <div class="card caps"><h2>Boletos de mercadoria (ativos)</h2><p class="sub">Compra de pneus, rodas e parafusos dos fornecedores. Fica separado das despesas operacionais (controle de compras); o custo no lucro vem das mercadorias vendidas.</p>
       <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_asset"><input type="hidden" name="tab" value="despesas">
         <input name="description" placeholder="FORNECEDOR / DESCRIÇÃO *" required>
         <div class="row c2"><input name="category" list="ast-cats" placeholder="TIPO (PNEUS, RODAS…)"><input name="amount" inputmode="decimal" placeholder="VALOR *" required></div>
@@ -274,7 +274,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
         <div class="row c2"><div><label class="f" for="wsince">Lançados desde</label><input id="wsince" type="date" name="since" value="<?= e(date('Y-m-d')) ?>"></div><div><label class="f" for="wconf">Digite APAGAR</label><input id="wconf" name="confirm" autocomplete="off" required></div></div>
         <button class="btn danger" type="submit">Apagar lançamentos financeiros</button></form></div><?php endif; ?>
     <div class="card"><h2>Despesas do período</h2><p class="sub"><?= count($items) ?> lançamento(s) pago(s) entre <?= e(fmt_date($range['from'])) ?> e <?= e(fmt_date($range['to'])) ?></p>
-      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><form method="post" style="margin:0"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="set_kind"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><?php if ($i['kind'] === 'despesa'): ?><input type="hidden" name="kind" value="ativo"><button class="btn ghost sm" type="submit" title="É compra de mercadoria? Abate da receita bruta">→ mercadoria</button><?php elseif ($i['kind'] === 'ativo'): ?><input type="hidden" name="kind" value="despesa"><button class="btn ghost sm" type="submit">→ despesa</button><?php endif; ?></form><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
+      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><form method="post" style="margin:0"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="set_kind"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><?php if ($i['kind'] === 'despesa'): ?><input type="hidden" name="kind" value="ativo"><button class="btn ghost sm" type="submit" title="É compra de mercadoria? Sai das despesas operacionais">→ mercadoria</button><?php elseif ($i['kind'] === 'ativo'): ?><input type="hidden" name="kind" value="despesa"><button class="btn ghost sm" type="submit">→ despesa</button><?php endif; ?></form><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
       <?php if (!$items): ?><p class="muted">Nenhuma despesa paga neste período.</p><?php endif; ?>
       <?php if ($cats): ?><h3 style="margin:18px 0 6px;font-size:14px">Por categoria</h3><table><tbody><?php foreach ($cats as $c): ?><tr><td><?= e($c['cat']) ?></td><td class="num"><b><?= money($c['total']) ?></b></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></div>
     <div class="card"><h2>Contas a pagar (em aberto)</h2><p class="sub">Dê baixa quando pagar: o valor passa a contar no lucro.</p><?php fin_table($ap, 'accounts_payable', false, 'despesas'); ?></div>
