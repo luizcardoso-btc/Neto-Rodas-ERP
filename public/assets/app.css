@@ -299,3 +299,11 @@ body{background:#f6f6f4}
 
 .inst{display:grid;grid-template-columns:44px 1fr 1.2fr auto;gap:8px;align-items:center}.inst .inst-n{font-size:13px;color:var(--muted)}.inst input{min-width:0}
 @media(max-width:520px){.inst{grid-template-columns:36px 1fr 1fr}.inst .chk{grid-column:2/4}}
+
+.fin-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}.fin-stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+.fin-stack>.card{margin:0}.fin-stack .stack{gap:8px}.fin-stack .card{padding:16px 18px}
+.row-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.row-act .edit-pay{margin:0}
+td.actions form,td.actions .edit-pay{display:inline-block;margin:0 2px 4px 0}
+@media(max-width:900px){.fin-2col{grid-template-columns:1fr}}
+td.actions{display:table-cell;text-align:right;vertical-align:middle}td.actions .btn.sm{padding:6px 10px;font-size:12px}
+td.actions{white-space:normal;min-width:150px}

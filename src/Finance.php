@@ -9,7 +9,7 @@ final class Finance
     public const PERIODS = ['hoje' => 'Hoje', '7d' => '7 dias', '30d' => '30 dias', '90d' => '90 dias', 'mes' => 'Este mês', 'tudo' => 'Tudo'];
     public const EXPENSE_CATEGORIES = ['ALUGUEL', 'ENERGIA', 'ÁGUA', 'INTERNET/TELEFONE', 'MARKETING', 'MANUTENÇÃO', 'FORNECEDOR', 'COMISSÃO', 'TRANSPORTE', 'OUTROS'];
     public const ASSET_CATEGORIES = ['PNEUS', 'RODAS', 'PARAFUSOS', 'OUTRAS MERCADORIAS'];
-    public const TAX_TYPES = ['DAS - SIMPLES NACIONAL', 'ICMS', 'ISS', 'IRPJ/CSLL', 'INSS/FGTS', 'IPTU/TAXAS', 'OUTRO IMPOSTO'];
+    public const TAX_TYPES = ['DAS - SIMPLES NACIONAL', 'DARF', 'ICMS', 'ISS', 'IRPJ/CSLL', 'INSS/FGTS', 'IPTU/TAXAS', 'OUTRO IMPOSTO'];
 
     /** @return array{key:string,from:string,to:string,days:int,label:string} */
     public static function range(string $key, ?\DateTimeImmutable $today = null): array

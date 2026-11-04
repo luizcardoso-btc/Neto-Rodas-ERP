@@ -143,7 +143,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             flash('ok', 'Baixa registrada.');
         } elseif ($action === 'delete' && in_array($_POST['table'] ?? '', ['accounts_payable', 'accounts_receivable'], true)) {
-            Database::run('DELETE FROM ' . $_POST['table'] . ' WHERE id = ? AND paid_at IS NULL', [(int) $_POST['id']]);
+            // contas a pagar podem ser removidas mesmo pagas (lancamento errado); a receber so em aberto
+            Database::run('DELETE FROM ' . $_POST['table'] . ' WHERE id = ?' . ($_POST['table'] === 'accounts_payable' ? '' : ' AND paid_at IS NULL'), [(int) $_POST['id']]);
             flash('ok', 'Lancamento removido.');
         } elseif ($action === 'add_creditor') {
             Finance::addCreditorPayment(
@@ -226,8 +227,9 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
       <td class="num"><b><?= money($r['amount']) ?></b></td>
       <td class="actions"><?php if ($table === 'accounts_payable'): fin_edit_form($r, $tab); endif; ?><?php if (!$r['paid_at']): ?>
         <form method="post"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="<?= e($tab) ?>"><input type="hidden" name="action" value="pay"><input type="hidden" name="table" value="<?= $table ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn green sm" type="submit">Dar baixa</button></form>
-        <form method="post" onsubmit="return confirm('Remover lancamento?')"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="<?= e($tab) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="table" value="<?= $table ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn danger sm" type="submit">Remover</button></form>
-      <?php endif; ?></td></tr>
+      <?php endif; ?>
+        <form method="post" onsubmit="return confirm('Remover este lancamento?')"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="<?= e($tab) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="table" value="<?= $table ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn danger sm" type="submit">Remover</button></form>
+      </td></tr>
   <?php endforeach; ?>
   <?php if (!$rows): ?><tr><td colspan="4" class="muted">Nenhum lancamento.</td></tr><?php endif; ?></tbody></table></div>
 <?php } ?>
@@ -285,7 +287,10 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
     <div class="kpi"><span>Impostos pagos no período</span><strong class="bad"><?= money($s['taxes']) ?></strong><small>estimado: <?= money($s['tax_estimated']) ?> (<?= number_format((float) $cfg['tax_rate'], 2, ',', '.') ?>%)</small></div>
     <div class="kpi"><span>Folha dos vendedores</span><strong><?= money($s['payroll']) ?></strong><small>pagos no período (previsto por semana: <?= money($s['weekly_total']) ?>)</small></div>
   </div>
-  <div class="cols fin-cols">
+  <?php $sellersAll = Database::all('SELECT id, name, weekly_pay FROM sellers WHERE active = 1 ORDER BY name');
+  $pr = Database::all('SELECT * FROM payroll_payments WHERE paid_on >= ? AND paid_on <= ? ORDER BY paid_on DESC, id DESC LIMIT 60', [$range['from'], $range['to']]); ?>
+  <div class="fin-2col">
+  <div class="fin-stack">
     <div class="card caps"><h2>Lançar despesa</h2><p class="sub">Aluguel, energia, marketing… (mercadoria de fornecedor vai em "Boletos de mercadoria"). Marque "já paga" para entrar no lucro do período.</p>
       <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_expense"><input type="hidden" name="tab" value="despesas">
         <input name="description" placeholder="DESCRIÇÃO *" required>
@@ -334,10 +339,6 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
         <div><label class="f" for="due2">Vencimento / data de pagamento</label><input id="due2" type="date" name="due_date" value="<?= e(date('Y-m-d')) ?>"></div>
         <label class="chk"><input type="checkbox" name="paid" value="1" checked> Já paga</label>
         <button class="btn block" type="submit">Registrar imposto</button></form></div>
-  </div>
-  <?php $sellersAll = Database::all('SELECT id, name, weekly_pay FROM sellers WHERE active = 1 ORDER BY name');
-  $pr = Database::all('SELECT * FROM payroll_payments WHERE paid_on >= ? AND paid_on <= ? ORDER BY paid_on DESC, id DESC LIMIT 60', [$range['from'], $range['to']]); ?>
-  <div class="cols fin-cols" style="margin-top:20px">
     <div class="card caps"><h2>Folha de pagamento (semanal)</h2><p class="sub">Lance o pagamento semanal dos funcionários. Entra nas despesas operacionais e abate do lucro final.</p>
       <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="payroll_all"><input type="hidden" name="tab" value="despesas">
         <div class="row c2"><div><label class="f" for="pw1">Semana iniciada em</label><input id="pw1" type="date" name="week_start" value="<?= e(date('Y-m-d', strtotime('monday this week'))) ?>"></div><div><label class="f" for="pp1">Pago em</label><input id="pp1" type="date" name="paid_on" value="<?= e(date('Y-m-d')) ?>"></div></div>
@@ -349,15 +350,18 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
       <h3 style="margin:16px 0 6px;font-size:14px">Pagos no período: <?= money($s['payroll']) ?></h3>
       <?php foreach ($pr as $x): ?><div class="exp-row"><div><b><?= e($x['employee']) ?></b><br><span class="small muted">pago em <?= e(fmt_date($x['paid_on'])) ?><?= $x['week_start'] ? ' · semana de ' . e(fmt_date($x['week_start'])) : '' ?></span></div><b><?= money($x['amount']) ?></b><form method="post" style="margin:0" onsubmit="return confirm('Remover pagamento?')"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="delete_payroll"><input type="hidden" name="id" value="<?= (int) $x['id'] ?>"><button class="btn danger sm" type="submit">×</button></form></div><?php endforeach; ?>
       <?php if (!$pr): ?><p class="muted">Nenhum pagamento de folha neste período.</p><?php endif; ?></div>
-    <?php if (Auth::isAdmin()): ?><div class="card"><h2>Zerar lançamentos de hoje</h2><p class="sub">Apaga despesas, impostos, boletos de mercadoria e folha <b>lançados</b> a partir da data abaixo. <b>Vendas não são alteradas.</b></p>
+  </div>
+  <div class="fin-stack">
+    <div class="card"><h2>Contas a pagar (em aberto)</h2><p class="sub">Dê baixa quando pagar: o valor passa a contar no lucro.</p><?php fin_table($ap, 'accounts_payable', false, 'despesas'); ?></div>
+    <div class="card"><h2>Despesas do período</h2><p class="sub"><?= count($items) ?> lançamento(s) pago(s) entre <?= e(fmt_date($range['from'])) ?> e <?= e(fmt_date($range['to'])) ?></p>
+      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><span class="row-act"><?php fin_edit_form($i, 'despesas'); ?><form method="post" style="margin:0" onsubmit="return confirm('Remover este lancamento?')"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="delete"><input type="hidden" name="table" value="accounts_payable"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><button class="btn danger sm" type="submit">Remover</button></form></span><form method="post" style="margin:0"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="set_kind"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><?php if ($i['kind'] === 'despesa'): ?><input type="hidden" name="kind" value="ativo"><button class="btn ghost sm" type="submit" title="É compra de mercadoria? Sai das despesas operacionais">→ mercadoria</button><?php elseif ($i['kind'] === 'ativo'): ?><input type="hidden" name="kind" value="despesa"><button class="btn ghost sm" type="submit">→ despesa</button><?php endif; ?></form><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
+      <?php if (!$items): ?><p class="muted">Nenhuma despesa paga neste período.</p><?php endif; ?>
+      <?php if ($cats): ?><h3 style="margin:18px 0 6px;font-size:14px">Por categoria</h3><table><tbody><?php foreach ($cats as $c): ?><tr><td><?= e($c['cat']) ?></td><td class="num"><b><?= money($c['total']) ?></b></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></div>
+    <?php if (Auth::isAdmin()): ?><div class="card"><h2>Zerar vários lançamentos</h2><p class="sub">Para apagar só um, use <b>Remover</b> na linha. Aqui: apaga despesas, impostos, boletos e folha <b>lançados</b> a partir da data abaixo. <b>Vendas não são alteradas.</b></p>
       <form method="post" class="stack" onsubmit="return confirm('Apagar os lancamentos financeiros desde a data escolhida? Vendas serao mantidas.')"><?= App\Csrf::field() ?><input type="hidden" name="action" value="wipe_fin"><input type="hidden" name="tab" value="despesas">
         <div class="row c2"><div><label class="f" for="wsince">Lançados desde</label><input id="wsince" type="date" name="since" value="<?= e(date('Y-m-d')) ?>"></div><div><label class="f" for="wconf">Digite APAGAR</label><input id="wconf" name="confirm" autocomplete="off" required></div></div>
         <button class="btn danger" type="submit">Apagar lançamentos financeiros</button></form></div><?php endif; ?>
-    <div class="card"><h2>Despesas do período</h2><p class="sub"><?= count($items) ?> lançamento(s) pago(s) entre <?= e(fmt_date($range['from'])) ?> e <?= e(fmt_date($range['to'])) ?></p>
-      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><?php fin_edit_form($i, 'despesas'); ?><form method="post" style="margin:0"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="set_kind"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><?php if ($i['kind'] === 'despesa'): ?><input type="hidden" name="kind" value="ativo"><button class="btn ghost sm" type="submit" title="É compra de mercadoria? Sai das despesas operacionais">→ mercadoria</button><?php elseif ($i['kind'] === 'ativo'): ?><input type="hidden" name="kind" value="despesa"><button class="btn ghost sm" type="submit">→ despesa</button><?php endif; ?></form><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
-      <?php if (!$items): ?><p class="muted">Nenhuma despesa paga neste período.</p><?php endif; ?>
-      <?php if ($cats): ?><h3 style="margin:18px 0 6px;font-size:14px">Por categoria</h3><table><tbody><?php foreach ($cats as $c): ?><tr><td><?= e($c['cat']) ?></td><td class="num"><b><?= money($c['total']) ?></b></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></div>
-    <div class="card"><h2>Contas a pagar (em aberto)</h2><p class="sub">Dê baixa quando pagar: o valor passa a contar no lucro.</p><?php fin_table($ap, 'accounts_payable', false, 'despesas'); ?></div>
+  </div>
   </div>
 
 <?php elseif ($tab === 'credor'): ?>
