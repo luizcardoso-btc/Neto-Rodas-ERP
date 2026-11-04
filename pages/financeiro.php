@@ -16,7 +16,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $back = ['tab' => isset(FIN_TABS[$_POST['tab'] ?? '']) ? $_POST['tab'] : 'resumo', 'p' => $pkey, 'cm' => $cm];
     $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['due_date'] ?? '') ? $_POST['due_date'] : null;
     try {
-        if ($action === 'add_expense' || $action === 'add_tax' || $action === 'add_asset') {
+        if ($action === 'add_asset') {
+            $desc = upper((string) ($_POST['description'] ?? ''));
+            $cat = upper((string) ($_POST['category'] ?? '')) ?: null;
+            $dues = (array) ($_POST['inst_due'] ?? []);
+            $vals = (array) ($_POST['inst_amount'] ?? []);
+            $paids = (array) ($_POST['inst_paid'] ?? []);
+            $total = count($vals);
+            if ($desc === '' || $total < 1) {
+                throw new DomainException('Informe fornecedor e valor.');
+            }
+            $rows = [];
+            foreach ($vals as $k => $v) {
+                $amt = parse_money($v);
+                if ($amt <= 0) {
+                    throw new DomainException('Informe o valor de todas as parcelas.');
+                }
+                $due = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($dues[$k] ?? '')) ? $dues[$k] : null;
+                $rows[] = [$amt, $due, !empty($paids[$k])];
+            }
+            foreach ($rows as $i => [$amt, $due, $isPaid]) {
+                Database::insert(
+                    'INSERT INTO accounts_payable (description, category, kind, amount, due_date, paid_at) VALUES (?,?,?,?,?,?)',
+                    [mb_substr($desc . ($total > 1 ? ' (' . ($i + 1) . '/' . $total . ')' : ''), 0, 200), $cat, 'ativo', $amt, $due, $isPaid ? ($due ? $due . ' 12:00:00' : date('Y-m-d H:i:s')) : null]
+                );
+            }
+            flash('ok', $total > 1 ? "Boleto lancado em $total parcelas, cada uma com seu vencimento." : 'Boleto de mercadoria lancado.');
+        } elseif ($action === 'add_expense' || $action === 'add_tax') {
             $amount = parse_money($_POST['amount'] ?? 0);
             if ($action === 'add_tax') {
                 $comp = preg_match('/^\d{4}-\d{2}$/', $_POST['competence'] ?? '') ? $_POST['competence'] : date('Y-m');
@@ -27,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $desc = upper((string) ($_POST['description'] ?? ''));
                 $cat = upper((string) ($_POST['category'] ?? '')) ?: null;
-                $kind = $action === 'add_asset' ? 'ativo' : 'despesa';
+                $kind = 'despesa';
                 $repeat = max(1, min(12, (int) ($_POST['repeat'] ?? 1)));
             }
             if ($desc === '' || $amount <= 0) {
@@ -268,14 +294,39 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
         <div class="row c2"><div><label class="f" for="due1">Vencimento / data</label><input id="due1" type="date" name="due_date"></div><div><label class="f" for="rep">Repetir (meses)</label><input id="rep" type="number" name="repeat" min="1" max="12" value="1"></div></div>
         <label class="chk"><input type="checkbox" name="paid" value="1"> Já paga</label>
         <button class="btn green block" type="submit">Lançar despesa</button></form></div>
-    <div class="card caps"><h2>Boletos de mercadoria (ativos)</h2><p class="sub">Compra de pneus, rodas e parafusos dos fornecedores. Fica separado das despesas operacionais (controle de compras); o custo no lucro vem das mercadorias vendidas.</p>
-      <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_asset"><input type="hidden" name="tab" value="despesas">
+    <div class="card caps"><h2>Boletos de mercadoria (ativos)</h2><p class="sub">Compra de pneus, rodas e parafusos dos fornecedores. Fica separado das despesas operacionais. Cada parcela tem o seu vencimento.</p>
+      <form method="post" class="stack" id="asset-form"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_asset"><input type="hidden" name="tab" value="despesas">
         <input name="description" placeholder="FORNECEDOR / DESCRIÇÃO *" required>
-        <div class="row c2"><input name="category" list="ast-cats" placeholder="TIPO (PNEUS, RODAS…)"><input name="amount" inputmode="decimal" placeholder="VALOR *" required></div>
+        <input name="category" list="ast-cats" placeholder="TIPO (PNEUS, RODAS…)">
         <datalist id="ast-cats"><?php foreach (Finance::ASSET_CATEGORIES as $c): ?><option value="<?= e($c) ?>"><?php endforeach; ?></datalist>
-        <div class="row c2"><div><label class="f" for="due3">Vencimento / data</label><input id="due3" type="date" name="due_date"></div><div><label class="f" for="rep3">Parcelas (boletos mensais)</label><input id="rep3" type="number" name="repeat" min="1" max="12" value="1"></div></div>
-        <label class="chk"><input type="checkbox" name="paid" value="1"> Já paga</label>
-        <button class="btn block" type="submit">Lançar boleto de mercadoria</button></form></div>
+        <div class="row c2"><div><label class="f" for="a-total">Valor total *</label><input id="a-total" inputmode="decimal" placeholder="VALOR TOTAL"></div><div><label class="f" for="a-n">Nº de parcelas</label><input id="a-n" type="number" min="1" max="36" value="1"></div></div>
+        <div><label class="f" for="a-first">Vencimento da 1ª parcela</label><input id="a-first" type="date"></div>
+        <div id="a-rows" class="stack"></div>
+        <p class="small muted">Ajuste o valor e a data de cada parcela se precisar (ex.: uma vence dia 1º e outra dia 5 do mês seguinte). Marque "paga" nas já quitadas.</p>
+        <button class="btn block" type="submit">Lançar boleto de mercadoria</button></form>
+      <script>
+      (function () {
+        const f = document.getElementById('asset-form'), box = document.getElementById('a-rows');
+        const tot = document.getElementById('a-total'), n = document.getElementById('a-n'), first = document.getElementById('a-first');
+        const cents = (v) => { v = String(v || '').trim(); if (!v) return 0; v = v.includes(',') ? v.replace(/\./g, '').replace(',', '.') : v; return Math.round((parseFloat(v) || 0) * 100); };
+        const fmt = (c) => (c / 100).toFixed(2).replace('.', ',');
+        const addMonths = (iso, k) => { if (!iso) return ''; const [y, m, d] = iso.split('-').map(Number); const dt = new Date(Date.UTC(y, m - 1 + k, 1)); const last = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate(); dt.setUTCDate(Math.min(d, last)); return dt.toISOString().slice(0, 10); };
+        function build() {
+          const N = Math.max(1, Math.min(36, parseInt(n.value, 10) || 1)), T = cents(tot.value), base = Math.floor(T / N);
+          const old = [...box.querySelectorAll('.inst')].map((r) => ({ v: r.querySelector('.iv').value, d: r.querySelector('.id').value, p: r.querySelector('.ip').checked }));
+          box.innerHTML = '';
+          for (let i = 0; i < N; i++) {
+            const v = i === N - 1 ? T - base * (N - 1) : base;
+            const row = document.createElement('div'); row.className = 'inst';
+            row.innerHTML = `<b class="inst-n">${i + 1}/${N}</b><input class="iv" name="inst_amount[]" inputmode="decimal" placeholder="VALOR" required><input class="id" type="date" name="inst_due[]" aria-label="Vencimento da parcela ${i + 1}"><label class="chk small"><input class="ip" type="checkbox" name="inst_paid[${i}]" value="1"> paga</label>`;
+            row.querySelector('.iv').value = fmt(v); row.querySelector('.id').value = addMonths(first.value, i);
+            box.appendChild(row);
+          }
+        }
+        [tot, n, first].forEach((x) => x.addEventListener('input', build));
+        build();
+      })();
+      </script></div>
     <div class="card caps"><h2>Pagamento de impostos</h2><p class="sub">Registre as guias pagas (DAS, ICMS, ISS…). Elas entram no lucro e alimentam o contador virtual.</p>
       <form method="post" class="stack"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_tax"><input type="hidden" name="tab" value="despesas">
         <select name="tax_type" aria-label="Imposto"><?php foreach (Finance::TAX_TYPES as $t): ?><option><?= e($t) ?></option><?php endforeach; ?></select>

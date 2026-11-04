@@ -296,3 +296,6 @@ body{background:#f6f6f4}
 .edit-pay{display:block;margin-bottom:6px}.edit-pay>summary{display:inline-block;list-style:none;cursor:pointer}.edit-pay>summary::-webkit-details-marker{display:none}
 .edit-pay[open]::before{content:"";position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:999}
 .edit-pay-form{position:fixed;z-index:1000;top:50%;left:50%;transform:translate(-50%,-50%);width:min(420px,92vw);max-height:90vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 20px 50px rgba(15,23,42,.3)}
+
+.inst{display:grid;grid-template-columns:44px 1fr 1.2fr auto;gap:8px;align-items:center}.inst .inst-n{font-size:13px;color:var(--muted)}.inst input{min-width:0}
+@media(max-width:520px){.inst{grid-template-columns:36px 1fr 1fr}.inst .chk{grid-column:2/4}}
