@@ -69,6 +69,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'delete_payroll') {
             Database::run('DELETE FROM payroll_payments WHERE id = ?', [(int) ($_POST['id'] ?? 0)]);
             flash('ok', 'Pagamento da folha removido.');
+        } elseif ($action === 'edit_payable') {
+            $id = (int) ($_POST['id'] ?? 0);
+            $row = Database::one('SELECT * FROM accounts_payable WHERE id = ?', [$id]);
+            $amount = parse_money($_POST['amount'] ?? 0);
+            $desc = upper((string) ($_POST['description'] ?? ''));
+            if (!$row || $desc === '' || $amount <= 0) {
+                throw new DomainException('Informe descricao e valor.');
+            }
+            $due = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['due_date'] ?? '') ? $_POST['due_date'] : null;
+            $paid = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['paid_date'] ?? '') ? $_POST['paid_date'] . ' 12:00:00' : null;
+            if ($paid !== null && substr((string) $row['paid_at'], 0, 10) === substr($paid, 0, 10)) {
+                $paid = $row['paid_at']; // mesma data: preserva a hora
+            }
+            $kind = $row['kind'] === 'imposto' ? 'imposto' : (($_POST['kind'] ?? '') === 'ativo' ? 'ativo' : 'despesa');
+            Database::run('UPDATE accounts_payable SET description = ?, category = ?, kind = ?, amount = ?, due_date = ?, paid_at = ? WHERE id = ?',
+                [mb_substr($desc, 0, 200), upper((string) ($_POST['category'] ?? '')) ?: null, $kind, $amount, $due, $paid, $id]);
+            flash('ok', 'Lancamento atualizado.');
         } elseif ($action === 'set_kind') {
             $k = in_array($_POST['kind'] ?? '', ['despesa', 'ativo'], true) ? $_POST['kind'] : 'despesa';
             Database::run("UPDATE accounts_payable SET kind = ? WHERE id = ? AND kind <> 'imposto'", [$k, (int) ($_POST['id'] ?? 0)]);
@@ -163,6 +180,17 @@ function fin_alerts(array $alerts, int $limit = 99): void
   <?php if (!$alerts): ?><div class="alert green"><b>🟢 Tudo em ordem</b><span>Nenhum alerta no momento.</span></div><?php endif; ?></div>
 <?php }
 
+function fin_edit_form(array $r, string $tab): void
+{ ?>
+  <details class="edit-pay"><summary class="btn ghost sm">Editar</summary>
+    <form method="post" class="stack edit-pay-form"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="<?= e($tab) ?>"><input type="hidden" name="action" value="edit_payable"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
+      <label class="f">Descrição</label><input name="description" value="<?= e($r['description']) ?>" required>
+      <div class="row c2"><div><label class="f">Valor</label><input name="amount" inputmode="decimal" value="<?= e(number_format((float) $r['amount'], 2, ',', '')) ?>" required></div><div><label class="f">Categoria</label><input name="category" value="<?= e($r['category'] ?? '') ?>"></div></div>
+      <div class="row c2"><div><label class="f">Vencimento</label><input type="date" name="due_date" value="<?= e((string) $r['due_date']) ?>"></div><div><label class="f">Pago em (vazio = em aberto)</label><input type="date" name="paid_date" value="<?= e($r['paid_at'] ? substr($r['paid_at'], 0, 10) : '') ?>"></div></div>
+      <?php if (($r['kind'] ?? '') !== 'imposto'): ?><label class="f">Tipo</label><select name="kind"><option value="despesa" <?= ($r['kind'] ?? '') === 'despesa' ? 'selected' : '' ?>>Despesa operacional</option><option value="ativo" <?= ($r['kind'] ?? '') === 'ativo' ? 'selected' : '' ?>>Mercadoria (ativo / boleto)</option></select><?php endif; ?>
+      <div class="actions"><button class="btn green sm" type="submit">Salvar</button><button class="btn ghost sm" type="button" onclick="this.closest('details').open=false">Cancelar</button></div></form></details>
+<?php }
+
 function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): void
 { ?>
   <div class="scroll"><table><thead><tr><th>Descricao</th><th>Vencimento</th><th class="num">Valor</th><th></th></tr></thead><tbody>
@@ -170,7 +198,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
     <tr style="<?= $r['paid_at'] ? 'opacity:.55' : '' ?>"><td><?= e($r['description']) ?><?= isset($r['kind']) && $r['kind'] === 'imposto' ? ' <span class="tag warn">imposto</span>' : (($r['kind'] ?? '') === 'ativo' ? ' <span class="tag blue">mercadoria</span>' : '') ?><?= $hasCustomer && !empty($r['customer']) ? '<br><span class="small muted">' . e($r['customer']) . '</span>' : '' ?><?= !empty($r['category']) && ($r['kind'] ?? '') !== 'imposto' ? '<br><span class="small muted">' . e($r['category']) . '</span>' : '' ?></td>
       <td><?= e(fmt_date($r['due_date'])) ?> <?php if ($r['paid_at']): ?><span class="tag green">pago</span><?php elseif ($late): ?><span class="tag red">atrasado</span><?php endif; ?></td>
       <td class="num"><b><?= money($r['amount']) ?></b></td>
-      <td class="actions"><?php if (!$r['paid_at']): ?>
+      <td class="actions"><?php if ($table === 'accounts_payable'): fin_edit_form($r, $tab); endif; ?><?php if (!$r['paid_at']): ?>
         <form method="post"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="<?= e($tab) ?>"><input type="hidden" name="action" value="pay"><input type="hidden" name="table" value="<?= $table ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn green sm" type="submit">Dar baixa</button></form>
         <form method="post" onsubmit="return confirm('Remover lancamento?')"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="<?= e($tab) ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="table" value="<?= $table ?>"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn danger sm" type="submit">Remover</button></form>
       <?php endif; ?></td></tr>
@@ -275,7 +303,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
         <div class="row c2"><div><label class="f" for="wsince">Lançados desde</label><input id="wsince" type="date" name="since" value="<?= e(date('Y-m-d')) ?>"></div><div><label class="f" for="wconf">Digite APAGAR</label><input id="wconf" name="confirm" autocomplete="off" required></div></div>
         <button class="btn danger" type="submit">Apagar lançamentos financeiros</button></form></div><?php endif; ?>
     <div class="card"><h2>Despesas do período</h2><p class="sub"><?= count($items) ?> lançamento(s) pago(s) entre <?= e(fmt_date($range['from'])) ?> e <?= e(fmt_date($range['to'])) ?></p>
-      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><form method="post" style="margin:0"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="set_kind"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><?php if ($i['kind'] === 'despesa'): ?><input type="hidden" name="kind" value="ativo"><button class="btn ghost sm" type="submit" title="É compra de mercadoria? Sai das despesas operacionais">→ mercadoria</button><?php elseif ($i['kind'] === 'ativo'): ?><input type="hidden" name="kind" value="despesa"><button class="btn ghost sm" type="submit">→ despesa</button><?php endif; ?></form><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
+      <?php foreach ($items as $i): ?><div class="exp-row"><div><b><?= e($i['description']) ?></b> <?= $i['kind'] === 'imposto' ? '<span class="tag warn">imposto</span>' : ($i['kind'] === 'ativo' ? '<span class="tag blue">mercadoria</span>' : '') ?><br><span class="small muted"><?= e($i['category'] ?: 'sem categoria') ?> · <?= e(fmt_date($i['paid_at'])) ?></span></div><b><?= money($i['amount']) ?></b><?php fin_edit_form($i, 'despesas'); ?><form method="post" style="margin:0"><?= App\Csrf::field() ?><input type="hidden" name="tab" value="despesas"><input type="hidden" name="action" value="set_kind"><input type="hidden" name="id" value="<?= (int) $i['id'] ?>"><?php if ($i['kind'] === 'despesa'): ?><input type="hidden" name="kind" value="ativo"><button class="btn ghost sm" type="submit" title="É compra de mercadoria? Sai das despesas operacionais">→ mercadoria</button><?php elseif ($i['kind'] === 'ativo'): ?><input type="hidden" name="kind" value="despesa"><button class="btn ghost sm" type="submit">→ despesa</button><?php endif; ?></form><i style="width:<?= round((float) $i['amount'] / $maxItem * 100) ?>%"></i></div><?php endforeach; ?>
       <?php if (!$items): ?><p class="muted">Nenhuma despesa paga neste período.</p><?php endif; ?>
       <?php if ($cats): ?><h3 style="margin:18px 0 6px;font-size:14px">Por categoria</h3><table><tbody><?php foreach ($cats as $c): ?><tr><td><?= e($c['cat']) ?></td><td class="num"><b><?= money($c['total']) ?></b></td></tr><?php endforeach; ?></tbody></table><?php endif; ?></div>
     <div class="card"><h2>Contas a pagar (em aberto)</h2><p class="sub">Dê baixa quando pagar: o valor passa a contar no lucro.</p><?php fin_table($ap, 'accounts_payable', false, 'despesas'); ?></div>
