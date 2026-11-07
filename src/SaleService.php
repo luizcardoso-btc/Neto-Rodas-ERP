@@ -368,7 +368,7 @@ final class SaleService
     }
 
     /**
-     * Cadastro obrigatorio no PDV: nome, CPF/CNPJ, telefone, CEP e carro.
+     * Cadastro obrigatorio no PDV: nome, CPF/CNPJ, telefone e carro (CEP opcional; se preenchido, 8 numeros).
      * @param array<string,mixed>|null $c
      */
     public static function assertPdvCustomer(?array $c): void
@@ -388,8 +388,9 @@ final class SaleService
         if (!in_array(strlen(digits($c['phone'] ?? '')), [10, 11], true)) {
             $missing[] = 'TELEFONE (com DDD)';
         }
-        if (strlen(digits($c['zip'] ?? '')) !== 8) {
-            $missing[] = 'CEP (8 numeros)';
+        $zipDigits = digits($c['zip'] ?? '');
+        if ($zipDigits !== '' && strlen($zipDigits) !== 8) {
+            $missing[] = 'CEP (8 numeros; pode deixar em branco)';
         }
         if (trim((string) ($c['car'] ?? '')) === '') {
             $missing[] = 'CARRO';

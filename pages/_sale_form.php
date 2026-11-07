@@ -36,7 +36,7 @@ $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
     <div class="row c2"><input name="customer[first_name]" placeholder="NOME *" autocomplete="off" required><input name="customer[last_name]" placeholder="SOBRENOME" autocomplete="off"></div>
     <div class="row"><input name="customer[email]" type="email" placeholder="E-MAIL (opcional)"></div>
     <div class="row c2"><input name="customer[phone]" inputmode="tel" placeholder="TELEFONE (DDD) *" required minlength="10"><input name="customer[tax_id]" inputmode="numeric" placeholder="CPF/CNPJ *" required minlength="11"></div>
-    <div class="row c2"><input name="customer[zip]" inputmode="numeric" placeholder="CEP *" required minlength="8" maxlength="9" autocomplete="postal-code"><input name="customer[car]" placeholder="CARRO *" required></div>
+    <div class="row c2"><input name="customer[zip]" inputmode="numeric" placeholder="CEP (opcional)" maxlength="9" autocomplete="postal-code"><input name="customer[car]" placeholder="CARRO *" required></div>
     <div class="row"><input name="notes" placeholder="OBSERVACOES"></div>
 
     <label class="flash ok" style="display:flex;gap:10px;align-items:center;cursor:pointer;margin:6px 0 10px">
