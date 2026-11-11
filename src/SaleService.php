@@ -474,7 +474,7 @@ final class SaleService
     /** Uma conta a receber por pagamento "a receber": cada um com a sua data prevista (sem data: a do formulario, ou +30 dias). */
     private static function insertReceivables(int $saleId, ?int $customerId, array $payments, mixed $fallbackDue, ?string $paidAt): void
     {
-        $fallback = self::validDate($fallbackDue) ?? date('Y-m-d', strtotime('+30 days'));
+        $fallback = self::validDate($fallbackDue); // sem data: fica em aberto (sem vencimento)
         $n = 0;
         foreach ($payments as $p) {
             if ($p['method'] !== 'prazo') {

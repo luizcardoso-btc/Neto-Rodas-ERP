@@ -313,6 +313,6 @@ td.actions{white-space:normal;min-width:150px}
 .tabs-sale button{border:0;background:transparent;font:inherit;font-weight:700;padding:9px 22px;border-radius:10px;cursor:pointer;color:inherit;opacity:.65}
 .tabs-sale button.on{background:var(--brand,#ffd21a);color:#15130a;opacity:1}
 .receber .rc-box{margin:0 0 8px}
-.receber .quick{display:flex;gap:6px;flex-wrap:wrap}
+.receber .rc-days{min-width:0}
 .receber .quick button{border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-weight:600;padding:8px 12px;border-radius:10px;cursor:pointer}
 .tag.atac{background:#fff3c4;color:#6b5600}

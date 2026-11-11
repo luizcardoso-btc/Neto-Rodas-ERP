@@ -146,7 +146,8 @@
         <div class="receber" hidden style="margin-top:10px">
           <div class="rc-box"><b>À RECEBER</b> <span class="small muted">Data prevista para o cliente pagar</span></div>
           <div class="grid"><input type="date" name="payments[${i}][due]" value="${esc(data.due)}" aria-label="Data prevista para receber">
-            <div class="quick"><button type="button" data-d="7">7 dias</button><button type="button" data-d="15">15 dias</button><button type="button" data-d="30">30 dias</button></div></div>
+            <input type="number" min="0" max="365" class="rc-days" placeholder="OU EM QUANTOS DIAS (EX.: 20)" aria-label="Receber em quantos dias"></div>
+          <small class="muted">Escolha a data no calendario ou digite os dias. Pode deixar em branco se ainda nao sabe.</small>
         </div>
         ${CardUI.html(i, data, CARD)}
         <label class="cred-box small" hidden><input type="checkbox" name="payments[${i}][to_creditor]" value="1" ${data.to_creditor ? 'checked' : ''} style="width:auto"> RECEBI NA MINHA CONTA E JA ENVIEI ESTE VALOR AO <b class="cred-name"></b></label>
@@ -178,8 +179,6 @@
       const rc = line.querySelector('.receber');
       rc.hidden = method.value !== 'prazo';
       const dueIn = rc.querySelector('input[type=date]');
-      dueIn.required = method.value === 'prazo';
-      if (method.value === 'prazo' && !dueIn.value) addDays(dueIn, 7);
       const cb = line.querySelector('.cred-box');
       const canCred = ['dinheiro', 'pix', 'cartao'].includes(method.value);
       cb.hidden = !canCred;
@@ -187,7 +186,9 @@
       cb.querySelector('.cred-name').textContent = form.dataset.creditor || 'CREDOR';
       recalc();
     };
-    line.querySelectorAll('.quick button').forEach((b) => { b.onclick = () => addDays(line.querySelector('.receber input[type=date]'), +b.dataset.d); });
+    const rcDate = line.querySelector('.receber input[type=date]'), rcDays = line.querySelector('.rc-days');
+    rcDays.addEventListener('input', () => { if (rcDays.value !== '') addDays(rcDate, parseInt(rcDays.value, 10) || 0); });
+    rcDate.addEventListener('input', () => { rcDays.value = ''; });
     tcat.addEventListener('change', sync);
     method.onchange = sync;
     line.addEventListener('input', () => cardUpd(method.value === 'cartao'));
