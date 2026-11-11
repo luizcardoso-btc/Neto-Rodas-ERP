@@ -24,7 +24,7 @@ if (!empty($_GET['id'])) {
         $items = Database::all('SELECT * FROM sale_items WHERE sale_id = ?', [$sale['id']]);
         $pays = Database::all('SELECT * FROM sale_payments WHERE sale_id = ?', [$sale['id']]);
         ?>
-<section class="hero slim"><div><h1>Venda #<?= (int) $sale['id'] ?></h1><p><?= e(fmt_date($sale['created_at'], true)) ?> · <?= e($sale['customer'] ?: 'Sem cliente') ?> · Vendedor: <?= e($sale['seller'] ?: '-') ?></p></div>
+<section class="hero slim"><div><h1>Venda #<?= (int) $sale['id'] ?></h1><p><?= e(fmt_date($sale['created_at'], true)) ?> · <?= $sale['sale_type'] === 'atacado' ? 'ATACADO · ' : '' ?><?= e($sale['customer'] ?: 'Sem cliente') ?> · Vendedor: <?= e($sale['seller'] ?: '-') ?></p></div>
   <div class="big"><small>Total</small><strong><?= money($sale['total']) ?></strong></div></section>
 <div class="cols" style="grid-template-columns:1fr 1fr">
   <div class="card"><h2>Itens</h2><table><thead><tr><th>Produto</th><th class="num">Qtd.</th><th class="num">Unitario</th><th class="num">Subtotal</th></tr></thead><tbody>
@@ -46,12 +46,14 @@ $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['from'] ?? '') ? $_GET['from']
 $to = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['to'] ?? '') ? $_GET['to'] : date('Y-m-d');
 $sellerId = (int) ($_GET['seller'] ?? 0);
 $status = $_GET['status'] ?? '';
+$stype = in_array($_GET['tipo'] ?? '', ['varejo', 'atacado'], true) ? $_GET['tipo'] : '';
 $q = trim((string) ($_GET['q'] ?? ''));
 
 $where = ['s.created_at >= ?', 's.created_at < DATE_ADD(?, INTERVAL 1 DAY)'];
 $args = [$from, $to];
 if ($sellerId) { $where[] = 's.seller_id = ?'; $args[] = $sellerId; }
 if (in_array($status, ['paid', 'pending'], true)) { $where[] = 's.payment_status = ?'; $args[] = $status; }
+if ($stype !== '') { $where[] = 's.sale_type = ?'; $args[] = $stype; }
 if ($q !== '') { $where[] = "CONCAT_WS(' ', c.first_name, c.last_name, c.phone) LIKE ?"; $args[] = '%' . addcslashes($q, '%_\\') . '%'; }
 $w = implode(' AND ', $where);
 
@@ -66,7 +68,7 @@ $rows = Database::all(
     $args
 );
 $sellers = Database::all('SELECT id, name FROM sellers ORDER BY name');
-$qs = ['from' => $from, 'to' => $to, 'seller' => $sellerId ?: '', 'status' => $status, 'q' => $q];
+$qs = ['from' => $from, 'to' => $to, 'seller' => $sellerId ?: '', 'status' => $status, 'tipo' => $stype, 'q' => $q];
 ?>
 <section class="hero slim"><div><h1>Vendas</h1><p>Historico completo com filtros por periodo, vendedor e situacao do pagamento.</p></div>
   <div class="big"><small><?= (int) $sum['n'] ?> venda(s) no periodo</small><strong><?= money($sum['total']) ?></strong></div></section>
@@ -76,12 +78,13 @@ $qs = ['from' => $from, 'to' => $to, 'seller' => $sellerId ?: '', 'status' => $s
     <div><label class="f" for="to">Ate</label><input id="to" type="date" name="to" value="<?= e($to) ?>"></div>
     <div><label class="f" for="seller">Vendedor</label><select id="seller" name="seller"><option value="">Todos</option><?php foreach ($sellers as $s): ?><option value="<?= (int) $s['id'] ?>" <?= $sellerId === (int) $s['id'] ? 'selected' : '' ?>><?= e($s['name']) ?></option><?php endforeach; ?></select></div>
     <div><label class="f" for="status">Pagamento</label><select id="status" name="status"><option value="">Todos</option><option value="paid" <?= $status === 'paid' ? 'selected' : '' ?>>Pago</option><option value="pending" <?= $status === 'pending' ? 'selected' : '' ?>>Pendente (a prazo)</option></select></div>
+    <div><label class="f" for="tipo">Tipo</label><select id="tipo" name="tipo"><option value="">Todos</option><option value="varejo" <?= $stype === 'varejo' ? 'selected' : '' ?>>Varejo</option><option value="atacado" <?= $stype === 'atacado' ? 'selected' : '' ?>>Atacado</option></select></div>
     <div><label class="f" for="q">Cliente</label><input id="q" name="q" placeholder="Nome ou telefone" value="<?= e($q) ?>"></div>
     <div style="align-self:end"><button class="btn" type="submit">Filtrar</button></div>
   </form>
   <div class="scroll"><table><thead><tr><th>#</th><th>Data</th><th>Cliente</th><th>Vendedor</th><th>Pagamento</th><th class="num">Total</th><th></th></tr></thead><tbody>
   <?php foreach ($rows as $r): ?>
-    <tr><td>#<?= (int) $r['id'] ?></td><td><?= e(fmt_date($r['created_at'], true)) ?></td><td><?= e($r['customer'] ?: '-') ?></td><td><?= e($r['seller'] ?: '-') ?></td>
+    <tr><td>#<?= (int) $r['id'] ?><?= $r['sale_type'] === 'atacado' ? ' <span class="tag atac">atacado</span>' : '' ?></td><td><?= e(fmt_date($r['created_at'], true)) ?></td><td><?= e($r['customer'] ?: '-') ?></td><td><?= e($r['seller'] ?: '-') ?></td>
       <td><?= e($r['methods']) ?> <span class="tag <?= $r['payment_status'] === 'paid' ? 'green' : 'warn' ?>"><?= $r['payment_status'] === 'paid' ? 'pago' : 'pendente' ?></span></td>
       <td class="num"><b><?= money($r['total']) ?></b></td><td class="actions"><a class="btn ghost sm" href="<?= e(url('vendas', ['id' => $r['id']])) ?>">Detalhes</a><?php if (App\Auth::isAdmin()): ?><a class="btn ghost sm" href="<?= e(url('vendas', ['edit' => $r['id']])) ?>">Editar</a><?php endif; ?></td></tr>
   <?php endforeach; ?>

@@ -38,6 +38,28 @@ final class SaleServiceTest extends TestCase
         $this->assertSame(-2, (int) Database::value("SELECT quantity FROM stock_movements WHERE sale_id = ? AND type = 'out'", [$r['id']]));
     }
 
+    public function testReceivablesHaveOneDueDatePerPayment(): void
+    {
+        $d1 = date('Y-m-d', strtotime('+7 days')); $d2 = date('Y-m-d', strtotime('+15 days'));
+        $r = SaleService::create($this->sale(['sale_type' => 'atacado', 'payments' => [
+            ['method' => 'pix', 'amount' => 200.0],
+            ['method' => 'prazo', 'amount' => 150.0, 'due' => $d1],
+            ['method' => 'prazo', 'amount' => 250.0, 'due' => $d2],
+        ]]));
+        $rows = Database::all('SELECT amount, due_date FROM accounts_receivable WHERE sale_id = ? ORDER BY id', [$r['id']]);
+        $this->assertCount(2, $rows);
+        $this->assertSame([150.0, $d1], [(float) $rows[0]['amount'], $rows[0]['due_date']]);
+        $this->assertSame([250.0, $d2], [(float) $rows[1]['amount'], $rows[1]['due_date']]);
+        $this->assertSame('atacado', Database::value('SELECT sale_type FROM sales WHERE id = ?', [$r['id']]));
+        $this->assertSame('pending', Database::value('SELECT payment_status FROM sales WHERE id = ?', [$r['id']]));
+    }
+
+    public function testSaleTypeDefaultsToRetail(): void
+    {
+        $r = SaleService::create($this->sale());
+        $this->assertSame('varejo', Database::value('SELECT sale_type FROM sales WHERE id = ?', [$r['id']]));
+    }
+
     public function testSameTokenIsIdempotent(): void
     {
         $data = $this->sale();

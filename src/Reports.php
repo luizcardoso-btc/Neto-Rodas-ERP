@@ -39,6 +39,10 @@ final class Reports
              WHERE s.created_at >= ? AND s.created_at < DATE_ADD(?, INTERVAL 1 DAY)',
             [$p['start'], $p['end']]
         );
+        $wh = Database::one(
+            "SELECT COUNT(*) n, COALESCE(SUM(total),0) v FROM sales WHERE sale_type = 'atacado' AND created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)",
+            [$p['start'], $p['end']]
+        );
         $weekly = (float) Database::value('SELECT COALESCE(SUM(weekly_pay),0) FROM sellers WHERE active = 1');
         $payroll = (float) Database::value('SELECT COALESCE(SUM(amount),0) FROM payroll_payments WHERE paid_on >= ? AND paid_on <= ?', [$p['start'], $p['end']]);
         $expenses = (float) Database::value(
@@ -54,7 +58,7 @@ final class Reports
         $profit = round($revenue - $cmv - $payroll - $expenses, 2);
 
         return [
-            'period' => $p, 'sales' => (int) $r['n'], 'revenue' => $revenue,
+            'period' => $p, 'sales' => (int) $r['n'], 'revenue' => $revenue, 'wholesale_n' => (int) $wh['n'], 'wholesale' => (float) $wh['v'],
             'ticket' => $r['n'] ? round($revenue / (int) $r['n'], 2) : 0.0,
             'cmv' => $cmv, 'assets' => $assets, 'weekly_payroll' => $weekly, 'payroll' => $payroll, 'expenses' => $expenses,
             'profit' => $profit, 'margin' => $revenue > 0 ? round($profit / $revenue * 100, 1) : 0.0,

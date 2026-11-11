@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
             'seller_id' => (int) ($_POST['seller_id'] ?? 0) ?: null,
             'notes' => upper((string) ($_POST['notes'] ?? '')),
             'wants_nfe' => !empty($_POST['wants_nfe']),
+            'sale_type' => ($_POST['sale_type'] ?? '') === 'atacado' ? 'atacado' : 'varejo',
             'payment_status' => (string) ($_POST['payment_status'] ?? 'pending'),
             'due_date' => (string) ($_POST['due_date'] ?? ''),
             'items' => array_map(fn ($r) => [
@@ -90,6 +91,7 @@ $nfe = $posted ? !empty($posted['wants_nfe']) : (bool) $sale['wants_nfe'];
       <div><label class="f" for="seller_id">Vendedor</label><select id="seller_id" name="seller_id"><option value="">Sem vendedor</option>
         <?php $sid = (int) $pv('seller_id', $sale['seller_id']); foreach ($sellers as $s): ?><option value="<?= (int) $s['id'] ?>" <?= $sid === (int) $s['id'] ? 'selected' : '' ?>><?= e($s['name']) ?></option><?php endforeach; ?></select></div>
       <div><label class="f" for="due_date">Vencimento (parte a prazo)</label><input id="due_date" type="date" name="due_date" value="<?= e($pv('due_date', (string) $due)) ?>"></div>
+      <div><label class="f" for="sale_type">Tipo da venda</label><select id="sale_type" name="sale_type"><option value="varejo" <?= $pv('sale_type', $sale['sale_type'] ?? 'varejo') !== 'atacado' ? 'selected' : '' ?>>Varejo</option><option value="atacado" <?= $pv('sale_type', $sale['sale_type'] ?? 'varejo') === 'atacado' ? 'selected' : '' ?>>Atacado</option></select></div>
       <div><label class="f" for="notes">Observacoes</label><input id="notes" name="notes" maxlength="255" value="<?= e($pv('notes', $sale['notes'] ?? '')) ?>"></div>
     </div>
     <label style="display:flex;gap:10px;align-items:center;margin-top:10px"><input type="checkbox" name="wants_nfe" value="1" style="width:auto" <?= $nfe ? 'checked' : '' ?>> NF-e (exige CPF/CNPJ e endereco no cadastro do cliente)</label>

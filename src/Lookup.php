@@ -33,7 +33,7 @@ final class Lookup
             $args = ['%' . $d . '%'];
         }
         $rows = Database::all(
-            "SELECT id, price, stock, condition_type, location, width, profile, rim FROM products
+            "SELECT id, price, wholesale_price, stock, condition_type, location, width, profile, rim FROM products
              WHERE $where ORDER BY (stock > 0) DESC, width, profile, rim, condition_type LIMIT 15",
             $args
         );
@@ -76,7 +76,7 @@ final class Lookup
     private static function catalog(string $where, array $args): array
     {
         $rows = Database::all(
-            "SELECT id, name, price, stock, condition_type, location FROM products
+            "SELECT id, name, price, wholesale_price, stock, condition_type, location FROM products
              WHERE $where ORDER BY (condition_type = 'novo') DESC, (stock > 0) DESC, name LIMIT 30",
             $args
         );

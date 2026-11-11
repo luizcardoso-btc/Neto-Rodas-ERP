@@ -44,6 +44,7 @@ $payLabel = ['dinheiro' => 'Dinheiro', 'pix' => 'Pix', 'cartao' => 'Cartão', 'p
   <div class="m-card dark"><span>Faturamento</span><strong><?= money($s['revenue']) ?></strong></div>
   <div class="m-card"><span>Lucro líquido estimado</span><strong class="<?= $s['profit'] < 0 ? 'neg' : '' ?>"><?= money($s['profit']) ?></strong><small>margem <?= number_format($s['margin'], 1, ',', '.') ?>%</small></div>
   <div class="m-card"><span>Vendas</span><strong><?= (int) $s['sales'] ?></strong></div>
+  <div class="m-card"><span>Atacado</span><strong><?= money($s['wholesale']) ?></strong><small><?= (int) $s['wholesale_n'] ?> venda(s) · varejo <?= money($s['revenue'] - $s['wholesale']) ?></small></div>
   <div class="m-card"><span>A receber</span><strong><?= money($openAr) ?></strong></div>
 </div>
 

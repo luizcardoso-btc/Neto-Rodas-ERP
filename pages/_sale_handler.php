@@ -24,6 +24,7 @@ $payments = array_map(fn ($r) => [
     'machine_id' => (int) ($r['machine_id'] ?? 0),
     'card_brand' => (string) ($r['card_brand'] ?? 'vm'),
     'card_inst' => (string) ($r['card_inst'] ?? ''),
+    'due' => (string) ($r['due'] ?? ''),
 ], $rows('payments'));
 
 $data = [
@@ -31,6 +32,7 @@ $data = [
     'seller_id' => $fixedSeller ? (int) $fixedSeller['id'] : ((int) ($_POST['seller_id'] ?? 0) ?: null),
     'wants_nfe' => !empty($_POST['wants_nfe']),
     'notes' => upper((string) ($_POST['notes'] ?? '')),
+    'sale_type' => ($_POST['sale_type'] ?? '') === 'atacado' ? 'atacado' : 'varejo',
     'due_date' => (string) ($_POST['due_date'] ?? ''),
     'customer' => upper_all((array) ($_POST['customer'] ?? [])),
     'items' => $items,

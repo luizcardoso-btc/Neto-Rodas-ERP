@@ -4,6 +4,7 @@
   if (!form) return;
 
   const lookupBase = form.dataset.lookup;
+  const saleType = document.getElementById('sale_type');
   const itemsBox = document.getElementById('items');
   const paysBox = document.getElementById('payments');
   const brl = (c) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -67,10 +68,16 @@
     applyCat(false);
     sel.addEventListener('change', () => { applyCat(true); recalc(); if (LISTALL.includes(sel.value)) name.focus(); });
 
+    const applyPrice = () => {
+      const p = line._p; if (!p) return;
+      const w = Number(p.wholesale_price) > 0 && saleType.value === 'atacado';
+      price.value = Number(w ? p.wholesale_price : p.price).toFixed(2).replace('.', ',');
+    };
+    line._applyPrice = () => { applyPrice(); recalc(); };
     const LISTALL = ['roda', 'parafuso'];
     const doSearch = async () => {
       if (sel.value === 'servico') return;
-      pid.value = ''; info.textContent = '';
+      pid.value = ''; info.textContent = ''; line._p = null;
       const rows = await search('product', name.value, sel.value);
       const unit = CATS[sel.value].unit || 'un.';
       list.innerHTML = rows.length
@@ -82,7 +89,7 @@
         const li = ev.target.closest('li'); if (!li || li.classList.contains('empty')) return;
         const p = rows[+li.dataset.k];
         name.value = (p.label + (p.condition_type === 'usado' && !/USAD/i.test(p.label) ? ' (usado)' : '')).toUpperCase(); pid.value = p.id;
-        price.value = Number(p.price).toFixed(2).replace('.', ',');
+        line._p = p; applyPrice();
         if (!qty.value) qty.value = 1;
         info.textContent = 'Em estoque: ' + p.stock + ' ' + unit + (p.location ? ' · ' + p.location : '');
         list.hidden = true; recalc();
@@ -103,6 +110,7 @@
   let rimOpts = ''; for (let r = RIMS[0]; r <= RIMS[1]; r++) rimOpts += `<option value="${r}">R${r}</option>`;
   if (!document.getElementById('wt-brands')) { const dl = document.createElement('datalist'); dl.id = 'wt-brands'; dl.innerHTML = BR.map((b) => `<option value="${esc(b)}">`).join(''); document.body.appendChild(dl); }
   const CARD = JSON.parse(form.dataset.card || '{"machines":[],"rates":{}}');
+  function addDays(input, n) { const d = new Date(); d.setDate(d.getDate() + n); input.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function addPayment(data = {}) {
     const i = seq++;
     const sel = (m) => (data.method === m ? 'selected' : '');
@@ -111,7 +119,7 @@
         <div class="grid">
           <select name="payments[${i}][method]" aria-label="Forma de pagamento">
             <option value="dinheiro" ${sel('dinheiro')}>Dinheiro</option><option value="pix" ${sel('pix')}>Pix</option>
-            <option value="cartao" ${sel('cartao')}>Cartao</option><option value="prazo" ${sel('prazo')}>A prazo</option>
+            <option value="cartao" ${sel('cartao')}>Cartao</option><option value="prazo" ${sel('prazo')}>À receber</option>
             <option value="troca" ${sel('troca')}>● Troca (usado)</option>
           </select>
           <input name="payments[${i}][amount]" inputmode="decimal" placeholder="Valor" value="${esc(data.amount)}">
@@ -134,6 +142,11 @@
             </div>
             <input name="payments[${i}][trade_qty]" type="number" min="1" placeholder="QTD. RECEBIDA" value="${esc(data.trade_qty || 1)}">
           </div>
+        </div>
+        <div class="receber" hidden style="margin-top:10px">
+          <div class="rc-box"><b>À RECEBER</b> <span class="small muted">Data prevista para o cliente pagar</span></div>
+          <div class="grid"><input type="date" name="payments[${i}][due]" value="${esc(data.due)}" aria-label="Data prevista para receber">
+            <div class="quick"><button type="button" data-d="7">7 dias</button><button type="button" data-d="15">15 dias</button><button type="button" data-d="30">30 dias</button></div></div>
         </div>
         ${CardUI.html(i, data, CARD)}
         <label class="cred-box small" hidden><input type="checkbox" name="payments[${i}][to_creditor]" value="1" ${data.to_creditor ? 'checked' : ''} style="width:auto"> RECEBI NA MINHA CONTA E JA ENVIEI ESTE VALOR AO <b class="cred-name"></b></label>
@@ -162,6 +175,11 @@
       wt.hidden = !(isTrade && roda); tnote.hidden = roda;
       [wBrand, wRim, wFin].forEach((x) => { x.required = isTrade && roda; });
       if (isTrade && roda) compose();
+      const rc = line.querySelector('.receber');
+      rc.hidden = method.value !== 'prazo';
+      const dueIn = rc.querySelector('input[type=date]');
+      dueIn.required = method.value === 'prazo';
+      if (method.value === 'prazo' && !dueIn.value) addDays(dueIn, 7);
       const cb = line.querySelector('.cred-box');
       const canCred = ['dinheiro', 'pix', 'cartao'].includes(method.value);
       cb.hidden = !canCred;
@@ -169,6 +187,7 @@
       cb.querySelector('.cred-name').textContent = form.dataset.creditor || 'CREDOR';
       recalc();
     };
+    line.querySelectorAll('.quick button').forEach((b) => { b.onclick = () => addDays(line.querySelector('.receber input[type=date]'), +b.dataset.d); });
     tcat.addEventListener('change', sync);
     method.onchange = sync;
     line.addEventListener('input', () => cardUpd(method.value === 'cartao'));
@@ -206,7 +225,8 @@
     box.className = diff === 0 && t.total > 0 ? 'ok' : 'miss';
     box.firstChild.textContent = diff < 0 ? 'Excedente' : (diff === 0 && t.total > 0 ? 'Fechado' : 'Falta');
     document.getElementById('s-diff').textContent = diff === 0 && t.total > 0 ? 'OK' : brl(Math.abs(diff));
-    document.getElementById('due-box').hidden = !t.prazo;
+    const rr = document.getElementById('rest-receber');
+    if (rr) rr.hidden = !(t.total > 0 && diff > 0);
   }
 
   /* ---------- CAIXA ALTA em todos os campos de texto ---------- */
@@ -267,12 +287,27 @@
     document.getElementById('submit').disabled = true; // evita duplo clique
   });
 
+  /* ---------- varejo / atacado e restante a receber ---------- */
+  const tabs = document.querySelectorAll('.tabs-sale button');
+  function setType(t) {
+    saleType.value = t;
+    tabs.forEach((b) => { b.classList.toggle('on', b.dataset.t === t); b.setAttribute('aria-selected', b.dataset.t === t); });
+    document.getElementById('atacado-hint').hidden = t !== 'atacado';
+    itemsBox.querySelectorAll('.item-line').forEach((l) => l._applyPrice && l._applyPrice());
+  }
+  tabs.forEach((b) => { b.onclick = () => setType(b.dataset.t); });
+  document.getElementById('rest-receber').onclick = () => {
+    const t = totals(); const diff = t.total - t.paid; if (diff <= 0) return;
+    addPayment({ method: 'prazo', amount: (diff / 100).toFixed(2).replace('.', ',') });
+  };
+
   /* ---------- restaurar apos erro ---------- */
   let old = null;
   try { old = JSON.parse(form.dataset.old); } catch (e) { /* sem dados anteriores */ }
   if (old) {
     const set = (n, v) => { const i = form.querySelector(`[name="${n}"]`); if (i && v != null) i.value = v; };
     Object.entries(old.customer || {}).forEach(([k, v]) => set(`customer[${k}]`, v));
+    if (old.sale_type) setType(old.sale_type);
     set('notes', old.notes); set('seller_id', old.seller_id); set('due_date', old.due_date);
     if (old.wants_nfe) { nfe.checked = true; nfe.dispatchEvent(new Event('change')); }
     Object.values(old.items || {}).forEach(addItem);

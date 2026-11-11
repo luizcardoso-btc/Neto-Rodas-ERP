@@ -58,12 +58,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $name, $t('description', 2000), $t('gtin', 20), $t('mpn', 60), $t('google_category'), $cat, $cond,
                 $t('brand', 80), $t('model', 80), $t('compatible_cars', 1000), $t('width', 10), $t('profile', 10), $t('rim', 10),
                 $t('location', 60), parse_money($_POST['cost_price'] ?? 0), parse_money($_POST['price'] ?? 0),
+                trim((string) ($_POST['wholesale_price'] ?? '')) === '' ? null : parse_money($_POST['wholesale_price']),
             ];
             $image = save_image();
             if ($id) {
                 Database::run(
                     'UPDATE products SET name=?, description=?, gtin=?, mpn=?, google_category=?, category=?, condition_type=?, brand=?, model=?,
-                     compatible_cars=?, width=?, profile=?, rim=?, location=?, cost_price=?, price=?' . ($image ? ', image_path=?' : '') . ' WHERE id=?',
+                     compatible_cars=?, width=?, profile=?, rim=?, location=?, cost_price=?, price=?, wholesale_price=?' . ($image ? ', image_path=?' : '') . ' WHERE id=?',
                     array_merge($vals, $image ? [$image] : [], [$id])
                 );
                 flash('ok', 'Produto atualizado.');
@@ -71,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $qty = max(0, (int) ($_POST['initial_qty'] ?? 0));
                 $pid = Database::insert(
                     'INSERT INTO products (name, description, gtin, mpn, google_category, category, condition_type, brand, model, compatible_cars,
-                     width, profile, rim, location, cost_price, price, image_path, stock) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                     width, profile, rim, location, cost_price, price, wholesale_price, image_path, stock) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                     array_merge($vals, [$image, $qty])
                 );
                 if ($qty > 0) {
@@ -194,6 +195,7 @@ foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock)
           <input name="cost_price" id="f-cost" inputmode="decimal" placeholder="Preco custo" value="<?= $edit ? e(number_format((float) $edit['cost_price'], 2, ',', '')) : '' ?>">
           <input name="price" id="f-price" inputmode="decimal" placeholder="Preco de venda" value="<?= $edit ? e(number_format((float) $edit['price'], 2, ',', '')) : '' ?>">
         </div>
+        <input name="wholesale_price" id="f-wholesale" inputmode="decimal" placeholder="Preco de atacado (opcional)" value="<?= $edit && $edit['wholesale_price'] !== null ? e(number_format((float) $edit['wholesale_price'], 2, ',', '')) : '' ?>">
         <?php if (!$edit): ?><input name="initial_qty" id="f-qty" type="number" min="0" placeholder="Quantidade inicial"><?php endif; ?>
         <button class="btn block" type="submit"><?= $edit ? 'Salvar alteracoes' : 'Salvar produto' ?></button>
         <?php if ($edit): ?><a class="btn ghost block" href="<?= e(url('estoque')) ?>" style="font-size:14px;padding:11px">Cancelar edicao</a><?php endif; ?>

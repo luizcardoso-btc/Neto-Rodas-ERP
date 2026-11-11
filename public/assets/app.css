@@ -307,3 +307,12 @@ td.actions form,td.actions .edit-pay{display:inline-block;margin:0 2px 4px 0}
 @media(max-width:900px){.fin-2col{grid-template-columns:1fr}}
 td.actions{display:table-cell;text-align:right;vertical-align:middle}td.actions .btn.sm{padding:6px 10px;font-size:12px}
 td.actions{white-space:normal;min-width:150px}
+
+/* Varejo/Atacado e a receber no PDV */
+.tabs-sale{display:inline-flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:14px;margin:0 0 14px;background:var(--bg,#fff)}
+.tabs-sale button{border:0;background:transparent;font:inherit;font-weight:700;padding:9px 22px;border-radius:10px;cursor:pointer;color:inherit;opacity:.65}
+.tabs-sale button.on{background:var(--brand,#ffd21a);color:#15130a;opacity:1}
+.receber .rc-box{margin:0 0 8px}
+.receber .quick{display:flex;gap:6px;flex-wrap:wrap}
+.receber .quick button{border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-weight:600;padding:8px 12px;border-radius:10px;cursor:pointer}
+.tag.atac{background:#fff3c4;color:#6b5600}

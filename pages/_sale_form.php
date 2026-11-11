@@ -62,6 +62,9 @@ $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
   </div>
 
   <div class="card">
+    <input type="hidden" name="sale_type" id="sale_type" value="varejo">
+    <div class="tabs-sale" role="tablist" aria-label="Tipo da venda"><button type="button" role="tab" class="on" data-t="varejo">Varejo</button><button type="button" role="tab" data-t="atacado">Atacado</button></div>
+    <p class="small muted" id="atacado-hint" hidden style="margin:0 0 10px">Venda de atacado: ao escolher o produto, o preco de atacado cadastrado no estoque e usado (se nao houver, vale o preco normal). Voce pode ajustar o valor.</p>
     <div class="actions" style="justify-content:space-between;align-items:center">
       <div><h2>Itens da venda</h2><p class="sub" style="margin:0">Escolha a categoria (Pneus, Roda ou Servicos). Pneus: busque pela medida (ex.: 175/65 R14). Roda: nome, marca ou aro.</p></div>
       <button class="btn ghost sm" type="button" id="add-item">+ Item</button>
@@ -81,7 +84,8 @@ $lookupBase = $self . (str_contains($self, '?') ? '&' : '?') . 'lookup=';
       <div>Pago<b id="s-paid">R$ 0,00</b></div>
       <div id="s-box">Falta<b id="s-diff">R$ 0,00</b></div>
     </div>
-    <div id="due-box" hidden><label class="f" for="due_date">Vencimento da parte a prazo</label><input id="due_date" type="date" name="due_date"></div>
+    <input type="hidden" id="due_date" name="due_date" value="">
+    <button type="button" class="btn ghost sm" id="rest-receber" hidden style="margin-top:10px">Lancar o restante como A RECEBER</button>
   </div>
 
   <button class="btn green block" type="submit" id="submit">Finalizar venda</button>

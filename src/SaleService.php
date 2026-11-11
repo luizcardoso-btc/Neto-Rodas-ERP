@@ -67,13 +67,14 @@ final class SaleService
             ));
 
             $saleId = Database::insert(
-                'INSERT INTO sales (request_token, customer_id, seller_id, total, payment_status, source, wants_nfe, notes)
-                 VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO sales (request_token, customer_id, seller_id, total, payment_status, source, wants_nfe, notes, sale_type)
+                 VALUES (?,?,?,?,?,?,?,?,?)',
                 [
                     $token, $customerId, $sellerId, $totalCents / 100,
                     $prazoCents > 0 ? 'pending' : 'paid', $source,
                     empty($data['wants_nfe']) ? 0 : 1,
                     self::clip($data['notes'] ?? null, 255),
+                    ($data['sale_type'] ?? '') === 'atacado' ? 'atacado' : 'varejo',
                 ]
             );
 
@@ -95,13 +96,7 @@ final class SaleService
 
             self::syncCreditorPayments($saleId, $sellerId, date('Y-m-d'));
 
-            if ($prazoCents > 0) {
-                $due = self::validDate($data['due_date'] ?? null) ?? date('Y-m-d', strtotime('+30 days'));
-                Database::insert(
-                    'INSERT INTO accounts_receivable (sale_id, customer_id, description, amount, due_date) VALUES (?,?,?,?,?)',
-                    [$saleId, $customerId, "Venda #$saleId (parte a prazo)", $prazoCents / 100, $due]
-                );
-            }
+            self::insertReceivables($saleId, $customerId, $payments, $data['due_date'] ?? null, null);
 
             $pdo->commit();
             return ['id' => $saleId, 'duplicate' => false];
@@ -305,8 +300,8 @@ final class SaleService
                 self::assertNfeCustomer($c);
             }
             Database::run(
-                'UPDATE sales SET customer_id = ?, seller_id = ?, total = ?, payment_status = ?, wants_nfe = ?, notes = ?, created_at = ? WHERE id = ?',
-                [$customerId, $sellerId, $totalCents / 100, $status, empty($data['wants_nfe']) ? 0 : 1, self::clip($data['notes'] ?? null, 255), $createdAt, $saleId]
+                'UPDATE sales SET customer_id = ?, seller_id = ?, total = ?, payment_status = ?, wants_nfe = ?, notes = ?, created_at = ?, sale_type = ? WHERE id = ?',
+                [$customerId, $sellerId, $totalCents / 100, $status, empty($data['wants_nfe']) ? 0 : 1, self::clip($data['notes'] ?? null, 255), $createdAt, ($data['sale_type'] ?? '') === 'atacado' ? 'atacado' : 'varejo', $saleId]
             );
 
             self::syncCreditorPayments($saleId, $sellerId, substr($createdAt, 0, 10));
@@ -314,14 +309,8 @@ final class SaleService
             // ---- contas a receber ----
             $oldPaidAt = Database::value('SELECT MAX(paid_at) FROM accounts_receivable WHERE sale_id = ?', [$saleId]);
             Database::run('DELETE FROM accounts_receivable WHERE sale_id = ?', [$saleId]);
-            if ($prazoCents > 0) {
-                $due = self::validDate($data['due_date'] ?? null) ?? date('Y-m-d', strtotime('+30 days'));
-                $paidAt = $status === 'paid' ? ($oldPaidAt ?: date('Y-m-d H:i:s')) : null;
-                Database::insert(
-                    'INSERT INTO accounts_receivable (sale_id, customer_id, description, amount, due_date, paid_at) VALUES (?,?,?,?,?,?)',
-                    [$saleId, $customerId, "Venda #$saleId (parte a prazo)", $prazoCents / 100, $due, $paidAt]
-                );
-            }
+            $paidAt = $status === 'paid' ? ($oldPaidAt ?: date('Y-m-d H:i:s')) : null;
+            self::insertReceivables($saleId, $customerId, $payments, $data['due_date'] ?? null, $paidAt);
 
             Database::insert(
                 'INSERT INTO sale_audit (sale_id, user_id, username, summary, snapshot) VALUES (?,?,?,?,?)',
@@ -482,6 +471,23 @@ final class SaleService
         return $out;
     }
 
+    /** Uma conta a receber por pagamento "a receber": cada um com a sua data prevista (sem data: a do formulario, ou +30 dias). */
+    private static function insertReceivables(int $saleId, ?int $customerId, array $payments, mixed $fallbackDue, ?string $paidAt): void
+    {
+        $fallback = self::validDate($fallbackDue) ?? date('Y-m-d', strtotime('+30 days'));
+        $n = 0;
+        foreach ($payments as $p) {
+            if ($p['method'] !== 'prazo') {
+                continue;
+            }
+            $n++;
+            Database::insert(
+                'INSERT INTO accounts_receivable (sale_id, customer_id, description, amount, due_date, paid_at) VALUES (?,?,?,?,?,?)',
+                [$saleId, $customerId, "Venda #$saleId (a receber" . ($n > 1 ? " $n" : '') . ')', $p['amount'], self::validDate($p['due'] ?? null) ?? $fallback, $paidAt]
+            );
+        }
+    }
+
     /** @return list<array{method:string,amount:float,note:?string,trade_qty:int,trade_category:string,to_creditor:bool}> */
     public static function normalizePayments(array $rows): array
     {
@@ -508,7 +514,8 @@ final class SaleService
                 $card = CardFees::resolve($r, $amount); // maquina escolhida: grava a taxa vigente
             }
             $out[] = ['method' => $method, 'amount' => $amount, 'note' => $note, 'trade_qty' => max(1, (int) ($r['trade_qty'] ?? 1)), 'trade_category' => $tc,
-                'to_creditor' => !empty($r['to_creditor']) && in_array($method, ['dinheiro', 'pix', 'cartao'], true)] + $card;
+                'to_creditor' => !empty($r['to_creditor']) && in_array($method, ['dinheiro', 'pix', 'cartao'], true),
+                'due' => $method === 'prazo' ? self::validDate($r['due'] ?? null) : null] + $card;
         }
         if (!$out) {
             throw new DomainException('Informe como o cliente pagou.');
