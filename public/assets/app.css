@@ -316,3 +316,4 @@ td.actions{white-space:normal;min-width:150px}
 .receber .rc-days{min-width:0}
 .receber .quick button{border:1px solid var(--line);background:transparent;color:inherit;font:inherit;font-weight:600;padding:8px 12px;border-radius:10px;cursor:pointer}
 .tag.atac{background:#fff3c4;color:#6b5600}
+.brand-tag{display:inline-block;font-weight:800;font-size:12px;letter-spacing:.04em;background:#15130a;color:#ffd21a;border-radius:8px;padding:3px 8px;margin:0 4px}

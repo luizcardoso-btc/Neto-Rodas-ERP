@@ -21,24 +21,42 @@ final class Lookup
             return self::bolts($q);
         }
         $where = "active = 1 AND category = 'pneu' AND COALESCE(width,'') <> '' AND COALESCE(profile,'') <> '' AND COALESCE(rim,'') <> ''";
+        // Palavras (marca/modelo) podem vir junto da medida: "175/65 R14 dunlop" ou so "dunlop".
+        preg_match_all('/[\p{L}][\p{L}\p{N}\-]+/u', $q, $w);
+        $words = array_values(array_filter($w[0], fn ($x) => mb_strlen($x) >= 2 && !in_array(mb_strtolower($x), ['pneu', 'pneus', 'usado', 'novo'], true)));
+        $measure = trim(preg_replace('/[\p{L}][\p{L}\p{N}\-]+/u', ' ', $q) ?? '');
+        if (preg_match('/\br\s*(\d{2})\b/i', $q, $rm)) {
+            $measure = trim($measure . ' R' . $rm[1]);
+        }
+        $args = [];
         if (preg_match('/^\s*r?\s*(\d{2})\s*$/i', $q, $m)) {
             $where .= ' AND rim = ?';
             $args = [$m[1]];
         } else {
-            $d = digits($q);
-            if (strlen($d) < 3) {
+            $d = digits($measure);
+            if (strlen($d) >= 3) {
+                $where .= ' AND CONCAT(width, profile, rim) LIKE ?';
+                $args = ['%' . $d . '%'];
+            } elseif (!$words) {
                 return [];
             }
-            $where .= ' AND CONCAT(width, profile, rim) LIKE ?';
-            $args = ['%' . $d . '%'];
+        }
+        foreach ($words as $word) {
+            if (preg_match('/^r\d{2}$/i', $word)) {
+                continue;
+            }
+            $where .= " AND CONCAT_WS(' ', brand, model, name) LIKE ?";
+            $args[] = '%' . addcslashes($word, '%_\\') . '%';
         }
         $rows = Database::all(
-            "SELECT id, price, wholesale_price, stock, condition_type, location, width, profile, rim FROM products
-             WHERE $where ORDER BY (stock > 0) DESC, width, profile, rim, condition_type LIMIT 15",
+            "SELECT id, name, brand, model, price, wholesale_price, stock, condition_type, location, width, profile, rim FROM products
+             WHERE $where ORDER BY (stock > 0) DESC, width, profile, rim, brand, condition_type LIMIT 40",
             $args
         );
         foreach ($rows as &$r) {
             $r['label'] = $r['width'] . '/' . $r['profile'] . ' R' . $r['rim'];
+            $r['brand'] = upper(trim((string) ($r['brand'] ?? '')));
+            $r['model'] = upper(trim((string) ($r['model'] ?? '')));
             $r['stock'] = (int) $r['stock'];
         }
         return $rows;

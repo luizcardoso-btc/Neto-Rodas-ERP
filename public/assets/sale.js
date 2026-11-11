@@ -27,7 +27,7 @@
 
   /* ---------- itens ---------- */
   const CATS = {
-    pneu: { ph: 'BUSCAR MEDIDA (EX.: 175/65 R14)', empty: 'NENHUMA MEDIDA ENCONTRADA. DIGITE A MEDIDA (EX.: 175/65 R14) OU SO O ARO (R15).' },
+    pneu: { ph: 'MEDIDA E/OU MARCA (EX.: 175/65 R14 DUNLOP)', empty: 'NENHUM PNEU ENCONTRADO. DIGITE A MEDIDA (EX.: 175/65 R14), SO O ARO (R15) OU A MARCA.' },
     roda: { ph: 'CLIQUE E ESCOLHA O JOGO DE RODA (OU DIGITE A MARCA/ARO)', empty: 'NENHUM JOGO DE RODA ENCONTRADO. CADASTRE EM ESTOQUE (CATEGORIA RODA).', unit: 'jogo(s)' },
     parafuso: { ph: 'CLIQUE E ESCOLHA O JOGO DE PARAFUSOS', empty: 'NENHUM JOGO DE PARAFUSOS CADASTRADO. CADASTRE EM ESTOQUE (CATEGORIA PARAFUSO).', unit: 'jogo(s)' },
     servico: { ph: 'DESCRICAO DO SERVICO (EX.: ALINHAMENTO)', empty: '' },
@@ -82,13 +82,13 @@
       const unit = CATS[sel.value].unit || 'un.';
       list.innerHTML = rows.length
         ? rows.map((p, k) =>
-          `<li data-k="${k}"><b>${esc(p.label)}</b> <small>${p.condition_type === 'usado' ? '<span class="dot"></span>usado · ' : ''}${p.stock > 0 ? 'estoque ' + p.stock + ' ' + unit : 'sem estoque'} · ${brl(Math.round(p.price * 100))}${LISTALL.includes(sel.value) ? ' o jogo' : ''}</small></li>`).join('')
+          `<li data-k="${k}"><b>${esc(p.label)}</b>${p.brand ? ' <span class="brand-tag">' + esc(p.brand) + (p.model ? ' ' + esc(p.model) : '') + '</span>' : ''} <small>${p.condition_type === 'usado' ? '<span class="dot"></span>usado · ' : ''}${p.stock > 0 ? 'estoque ' + p.stock + ' ' + unit : 'sem estoque'} · ${brl(Math.round(p.price * 100))}${LISTALL.includes(sel.value) ? ' o jogo' : ''}</small></li>`).join('')
         : `<li class="empty" style="cursor:default;color:var(--muted)">${CATS[sel.value].empty}</li>`;
       list.hidden = !LISTALL.includes(sel.value) && name.value.trim().length < 2;
       list.onclick = (ev) => {
         const li = ev.target.closest('li'); if (!li || li.classList.contains('empty')) return;
         const p = rows[+li.dataset.k];
-        name.value = (p.label + (p.condition_type === 'usado' && !/USAD/i.test(p.label) ? ' (usado)' : '')).toUpperCase(); pid.value = p.id;
+        name.value = (p.label + (p.brand ? ' ' + p.brand + (p.model ? ' ' + p.model : '') : '') + (p.condition_type === 'usado' && !/USAD/i.test(p.label) ? ' (usado)' : '')).toUpperCase(); pid.value = p.id;
         line._p = p; applyPrice();
         if (!qty.value) qty.value = 1;
         info.textContent = 'Em estoque: ' + p.stock + ' ' + unit + (p.location ? ' · ' + p.location : '');

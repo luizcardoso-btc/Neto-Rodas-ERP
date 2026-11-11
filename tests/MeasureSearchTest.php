@@ -28,6 +28,17 @@ final class MeasureSearchTest extends TestCase
         $this->assertSame(16, (int) Database::value('SELECT COUNT(*) FROM products'));
     }
 
+    public function testSearchShowsAndFiltersByBrand(): void
+    {
+        Database::run("INSERT INTO products (name, brand, width, profile, rim, price, stock) VALUES ('Pneu Dunlop', 'Dunlop', '195', '60', '16', 400, 3), ('Pneu Goodyear', 'Goodyear', '195', '60', '16', 420, 2)");
+        $both = Lookup::products('195/60 R16');
+        $this->assertSame(['DUNLOP', 'GOODYEAR'], array_column($both, 'brand'));
+        $this->assertCount(1, Lookup::products('195/60 R16 goodyear'));
+        $this->assertSame('GOODYEAR', Lookup::products('goodyear')[0]['brand']);
+        $this->assertCount(1, Lookup::products('dunlop 195'));
+        $this->assertSame([], Lookup::products('michelin'));
+    }
+
     public function testSearchByDifferentMeasureFormats(): void
     {
         foreach (['175/65 R14', '175 65 14', '1756514', '175/65r14'] as $q) {
