@@ -17,13 +17,13 @@ final class Wheel
     public const RIM_MAX = 22;
     public const BRANDS = ['KS', 'KR'];
 
-    public static function name(string $brand, int|string $rim, string $finish, bool $used = false): string
+    public static function name(string $brand, int|string $rim, string $finish, bool|string $used = false): string
     {
-        return sprintf('JOGO DE RODA%s %s R%s - %s', $used ? ' USADA' : '', upper(trim($brand)), $rim, upper(trim($finish)));
+        return sprintf('JOGO DE RODA%s %s R%s - %s', $used === 'atacado' ? ' ATACADO' : ($used ? ' USADA' : ''), upper(trim($brand)), $rim, upper(trim($finish)));
     }
 
     /** @return array{brand:string,rim:string,finish:string,name:string} dados validados e normalizados */
-    public static function normalize(string $brand, string $rim, string $finish, bool $used): array
+    public static function normalize(string $brand, string $rim, string $finish, bool|string $used): array
     {
         $brand = upper(trim($brand));
         $finish = upper(trim($finish));

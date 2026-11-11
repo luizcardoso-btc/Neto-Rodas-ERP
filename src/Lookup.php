@@ -6,6 +6,19 @@ namespace App;
 /** Busca rapida (JSON) de produtos e clientes para o PDV. */
 final class Lookup
 {
+    /** 'varejo' (padrao) esconde o estoque ATACADO; 'atacado' lista o atacado primeiro e tambem o restante. */
+    public static string $mode = 'varejo';
+
+    private static function condSql(): string
+    {
+        return self::$mode === 'atacado' ? '' : " AND condition_type <> 'atacado'";
+    }
+
+    private static function condOrder(): string
+    {
+        return self::$mode === 'atacado' ? "(condition_type = 'atacado') DESC, " : '';
+    }
+
     /**
      * Busca de pneus SOMENTE por medida. Aceita "175/65 R14", "175 65 14", "1756514",
      * so a largura ("175") ou so o aro ("R15" / "15"). Texto livre (marca, nome) nao retorna nada.
@@ -50,7 +63,7 @@ final class Lookup
         }
         $rows = Database::all(
             "SELECT id, name, brand, model, price, wholesale_price, stock, condition_type, location, width, profile, rim FROM products
-             WHERE $where ORDER BY (stock > 0) DESC, width, profile, rim, brand, condition_type LIMIT 40",
+             WHERE $where" . self::condSql() . " ORDER BY " . self::condOrder() . "(stock > 0) DESC, width, profile, rim, brand, condition_type LIMIT 40",
             $args
         );
         foreach ($rows as &$r) {
@@ -95,7 +108,7 @@ final class Lookup
     {
         $rows = Database::all(
             "SELECT id, name, price, wholesale_price, stock, condition_type, location FROM products
-             WHERE $where ORDER BY (condition_type = 'novo') DESC, (stock > 0) DESC, name LIMIT 30",
+             WHERE $where" . self::condSql() . " ORDER BY " . self::condOrder() . "(condition_type = 'novo') DESC, (stock > 0) DESC, name LIMIT 30",
             $args
         );
         foreach ($rows as &$r) {
@@ -116,6 +129,7 @@ final class Lookup
             exit;
         }
         $like = '%' . addcslashes($q, '%_\\') . '%';
+        self::$mode = ($_GET['mode'] ?? '') === 'atacado' ? 'atacado' : 'varejo';
         if ($kind === 'product') {
             $rows = self::products($q, (string) ($_GET['cat'] ?? 'pneu'));
         } elseif ($kind === 'customer') {

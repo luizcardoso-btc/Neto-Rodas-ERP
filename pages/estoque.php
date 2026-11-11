@@ -30,9 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = (int) ($_POST['id'] ?? 0);
             if (($_POST['category'] ?? '') === 'roda') {
                 // Roda segue o padrao unico: JOGO DE RODA <MARCA> R<ARO> - <ACABAMENTO> (por jogo de 4).
-                $usedW = ($_POST['condition_type'] ?? '') === 'usado';
+                $condW = in_array($_POST['condition_type'] ?? '', ['usado', 'atacado'], true) ? $_POST['condition_type'] : 'novo';
+                $usedW = $condW === 'atacado' ? 'atacado' : $condW === 'usado';
                 $w = App\Wheel::normalize((string) ($_POST['wheel_brand'] ?? ''), (string) ($_POST['wheel_rim'] ?? ''), (string) ($_POST['wheel_finish'] ?? ''), $usedW);
-                $dup = Database::value('SELECT id FROM products WHERE name = ? AND condition_type = ? AND id <> ? AND active = 1 LIMIT 1', [$w['name'], $usedW ? 'usado' : 'novo', $id]);
+                $dup = Database::value('SELECT id FROM products WHERE name = ? AND condition_type = ? AND id <> ? AND active = 1 LIMIT 1', [$w['name'], $condW, $id]);
                 if ($dup) {
                     throw new DomainException('Este jogo ja esta cadastrado (' . $w['name'] . '). Use o Ajuste de estoque para somar jogos.');
                 }
@@ -52,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new DomainException('Informe o nome do produto.');
             }
             $cat = array_key_exists($_POST['category'] ?? '', CATEGORIES) ? $_POST['category'] : 'pneu';
-            $cond = ($_POST['condition_type'] ?? '') === 'usado' ? 'usado' : 'novo';
+            $cond = in_array($_POST['condition_type'] ?? '', ['usado', 'atacado'], true) ? $_POST['condition_type'] : 'novo';
             $t = fn (string $k, int $max = 200) => ($v = mb_substr(trim((string) ($_POST[$k] ?? '')), 0, $max)) === '' ? null : $v;
             $vals = [
                 $name, $t('description', 2000), $t('gtin', 20), $t('mpn', 60), $t('google_category'), $cat, $cond,
@@ -110,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $q = trim((string) ($_GET['q'] ?? ''));
 $cat = (string) ($_GET['cat'] ?? '');
 $cond = (string) ($_GET['cond'] ?? '');
-$GROUPS = ['pneu_novo' => ['Pneus novos', 'pneu', 'novo'], 'pneu_usado' => ['Pneus usados', 'pneu', 'usado'], 'roda_novo' => ['Rodas novas', 'roda', 'novo'], 'roda_usado' => ['Rodas usadas', 'roda', 'usado'], 'parafuso_novo' => ['Parafusos', 'parafuso', 'novo']];
+$GROUPS = ['pneu_novo' => ['Pneus novos', 'pneu', 'novo'], 'pneu_usado' => ['Pneus usados', 'pneu', 'usado'], 'roda_novo' => ['Rodas novas', 'roda', 'novo'], 'roda_usado' => ['Rodas usadas', 'roda', 'usado'], 'parafuso_novo' => ['Parafusos', 'parafuso', 'novo'], 'pneu_atacado' => ['Pneus atacado', 'pneu', 'atacado'], 'roda_atacado' => ['Rodas atacado', 'roda', 'atacado'], 'parafuso_atacado' => ['Parafusos atacado', 'parafuso', 'atacado']];
 $grp = (string) ($_GET['grp'] ?? '');
 if (isset($GROUPS[$grp])) {
     [, $cat, $cond] = $GROUPS[$grp];
@@ -123,7 +124,7 @@ if ($q !== '') {
     array_push($args, $like, $like, $like, $like, $like, $like, $like);
 }
 if (isset(CATEGORIES[$cat])) { $where[] = 'category = ?'; $args[] = $cat; }
-if (in_array($cond, ['novo', 'usado'], true)) { $where[] = 'condition_type = ?'; $args[] = $cond; }
+if (in_array($cond, ['novo', 'usado', 'atacado'], true)) { $where[] = 'condition_type = ?'; $args[] = $cond; }
 $w = implode(' AND ', $where);
 
 $perPage = 40;
@@ -142,7 +143,7 @@ $v = fn (string $k, string $d = '') => e((string) ($edit[$k] ?? $d));
 <section class="hero slim"><div><h1>Estoque</h1><p>Cadastre produtos, acompanhe quantidades e corrija diferencas com ajuste manual. Toda movimentacao fica registrada.</p></div></section>
 
 <?php
-$cnt = ['novo' => ['pneu' => 0, 'roda' => 0], 'usado' => ['pneu' => 0, 'roda' => 0]];
+$cnt = ['novo' => ['pneu' => 0, 'roda' => 0], 'usado' => ['pneu' => 0, 'roda' => 0], 'atacado' => ['pneu' => 0, 'roda' => 0]];
 foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock),0) q FROM products WHERE active = 1 AND stock > 0 AND category IN ('pneu','roda') GROUP BY condition_type, category") as $r) {
     $cnt[$r['c']][$r['k']] = (int) $r['q'];
 }
@@ -151,6 +152,7 @@ foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock)
 <div class="stock-dots">
   <div class="sd"><i class="dot green"></i><div><span>Em estoque (novos)</span><strong><?= $cnt['novo']['pneu'] + $cnt['novo']['roda'] ?></strong><small><?= $cnt['novo']['pneu'] ?> pneu(s) · <?= $cnt['novo']['roda'] ?> jogo(s) de roda</small></div></div>
   <div class="sd"><i class="dot red"></i><div><span>Usados (trocas)</span><strong><?= $cnt['usado']['pneu'] + $cnt['usado']['roda'] ?></strong><small><?= $cnt['usado']['pneu'] ?> pneu(s) · <?= $cnt['usado']['roda'] ?> jogo(s) de roda</small></div></div>
+  <div class="sd"><i class="dot orange"></i><div><span>Atacado</span><strong><?= $cnt['atacado']['pneu'] + $cnt['atacado']['roda'] ?></strong><small><?= $cnt['atacado']['pneu'] ?> pneu(s) · <?= $cnt['atacado']['roda'] ?> jogo(s) de roda</small></div></div>
 </div>
 <div class="kpis">
   <div class="kpi"><span>Produtos</span><strong><?= (int) $stats['n'] ?></strong><small><?= (int) $stats['units'] ?> unidades</small></div>
@@ -167,7 +169,7 @@ foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock)
       <div class="stack" style="margin-top:12px">
         <div class="row c2">
           <select name="category" id="f-cat" aria-label="Categoria"><?php foreach (CATEGORIES as $k => $l): ?><option value="<?= $k ?>" <?= ($edit['category'] ?? ($_GET['newcat'] ?? 'pneu')) === $k ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select>
-          <select name="condition_type" aria-label="Condicao"><option value="novo">Novo</option><option value="usado" <?= ($edit['condition_type'] ?? '') === 'usado' ? 'selected' : '' ?>>Usado</option></select>
+          <select name="condition_type" aria-label="Condicao"><option value="novo">Novo</option><option value="usado" <?= ($edit['condition_type'] ?? '') === 'usado' ? 'selected' : '' ?>>Usado</option><option value="atacado" <?= ($edit['condition_type'] ?? '') === 'atacado' ? 'selected' : '' ?>>ATACADO</option></select>
         </div>
 
         <div id="f-wheel" class="stack" hidden>
@@ -219,7 +221,7 @@ foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock)
         const jg = w ? ' do JOGO (4 rodas)' : (cat.value === 'parafuso' ? ' do JOGO (16 un.)' : '');
         cost.placeholder = 'Preco de custo' + jg;
         price.placeholder = 'Preco de venda' + jg;
-        prev.textContent = !w ? '-' : (brand.value && rim.value && fin.value ? 'JOGO DE RODA' + (cond.value === 'usado' ? ' USADA' : '') + ' ' + brand.value.toUpperCase() + ' R' + rim.value + ' - ' + fin.value : 'Preencha marca, aro e acabamento');
+        prev.textContent = !w ? '-' : (brand.value && rim.value && fin.value ? 'JOGO DE RODA' + (cond.value === 'usado' ? ' USADA' : (cond.value === 'atacado' ? ' ATACADO' : '')) + ' ' + brand.value.toUpperCase() + ' R' + rim.value + ' - ' + fin.value : 'Preencha marca, aro e acabamento');
       }
       [cat, cond, brand, rim, fin].forEach((i) => i.addEventListener('input', sync)); cat.addEventListener('change', sync); sync();
     })();
@@ -242,7 +244,7 @@ foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock)
     <div class="fin-tabs" style="margin:12px 0">
       <a class="pill <?= $grp === '' ? 'on' : '' ?>" href="<?= e(url('estoque', ['q' => $q])) ?>">Todos</a>
       <?php foreach ($GROUPS as $gk => [$gl, $gc, $gd]): $tc = $tabCnt[$gc . '_' . $gd] ?? ['n' => 0, 'q' => 0]; ?>
-        <a class="pill <?= $grp === $gk ? 'on' : '' ?>" href="<?= e(url('estoque', ['grp' => $gk, 'q' => $q])) ?>"><span class="dot <?= $gd === 'usado' ? 'redd' : 'greend' ?>"></span><?= e($gl) ?> <b><?= (int) $tc['q'] ?></b></a>
+        <a class="pill <?= $grp === $gk ? 'on' : '' ?>" href="<?= e(url('estoque', ['grp' => $gk, 'q' => $q])) ?>"><span class="dot <?= $gd === 'usado' ? 'redd' : ($gd === 'atacado' ? 'orangd' : 'greend') ?>"></span><?= e($gl) ?> <b><?= (int) $tc['q'] ?></b></a>
       <?php endforeach; ?>
     </div>
     <form class="filters" method="get" style="margin-top:4px;grid-template-columns:1fr auto">
@@ -257,7 +259,7 @@ foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock)
         <tr style="<?= $p['active'] ? '' : 'opacity:.5' ?>">
           <td><b><?= e($p['name']) ?></b><br>
             <?php if ($p['brand']): ?><span class="tag"><?= e($p['brand']) ?></span><?php endif; ?>
-            <span class="tag <?= $p['condition_type'] === 'usado' ? 'warn' : 'green' ?>"><?= e($p['condition_type']) ?></span><?php if ($p['category'] === 'roda' && !str_starts_with((string) $p['name'], 'JOGO DE RODA ') && (!$p['model'] || !in_array(upper($p['model']), App\Wheel::FINISHES, true))): ?> <span class="tag red">fora do padrao: edite</span><?php endif; ?>
+            <span class="tag <?= $p['condition_type'] === 'usado' ? 'warn' : ($p['condition_type'] === 'atacado' ? 'orange' : 'green') ?>"><?= e($p['condition_type']) ?></span><?php if ($p['category'] === 'roda' && !str_starts_with((string) $p['name'], 'JOGO DE RODA ') && (!$p['model'] || !in_array(upper($p['model']), App\Wheel::FINISHES, true))): ?> <span class="tag red">fora do padrao: edite</span><?php endif; ?>
             <?php if ($p['gtin']): ?><span class="small muted"><?= e($p['gtin']) ?></span><?php endif; ?></td>
           <td><?= $p['category'] === 'roda' ? ($p['rim'] ? 'R' . e($p['rim']) : '-') : (e(trim(($p['width'] ?? '') . ($p['profile'] ? '/' . $p['profile'] : '') . ($p['rim'] ? ' R' . $p['rim'] : ''))) ?: '-') ?></td>
           <td><?= e($p['location'] ?? '-') ?></td>

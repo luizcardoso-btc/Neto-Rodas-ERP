@@ -39,6 +39,19 @@ final class MeasureSearchTest extends TestCase
         $this->assertSame([], Lookup::products('michelin'));
     }
 
+    public function testWholesaleStockOnlyShowsInWholesaleMode(): void
+    {
+        Database::run("INSERT INTO products (name, brand, condition_type, width, profile, rim, price, stock) VALUES ('Pneu Atacado', 'Dunlop', 'atacado', '195', '60', '16', 300, 20), ('Pneu Varejo', 'Dunlop', 'novo', '195', '60', '16', 400, 3)");
+        try {
+            Lookup::$mode = 'varejo';
+            $this->assertSame(['novo'], array_column(Lookup::products('195/60 R16'), 'condition_type'));
+            Lookup::$mode = 'atacado';
+            $this->assertSame(['atacado', 'novo'], array_column(Lookup::products('195/60 R16'), 'condition_type'));
+        } finally {
+            Lookup::$mode = 'varejo';
+        }
+    }
+
     public function testSearchByDifferentMeasureFormats(): void
     {
         foreach (['175/65 R14', '175 65 14', '1756514', '175/65r14'] as $q) {

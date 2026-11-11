@@ -21,7 +21,7 @@
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
   async function search(kind, q, cat) {
-    const r = await fetch(lookupBase + kind + '&q=' + encodeURIComponent(q) + (cat ? '&cat=' + cat : ''), { credentials: 'same-origin' });
+    const r = await fetch(lookupBase + kind + '&q=' + encodeURIComponent(q) + (cat ? '&cat=' + cat : '') + (saleType && saleType.value === 'atacado' ? '&mode=atacado' : ''), { credentials: 'same-origin' });
     return r.ok ? r.json() : [];
   }
 
@@ -82,14 +82,16 @@
       const unit = CATS[sel.value].unit || 'un.';
       list.innerHTML = rows.length
         ? rows.map((p, k) =>
-          `<li data-k="${k}"><b>${esc(p.label)}</b>${p.brand ? ' <span class="brand-tag">' + esc(p.brand) + (p.model ? ' ' + esc(p.model) : '') + '</span>' : ''} <small>${p.condition_type === 'usado' ? '<span class="dot"></span>usado · ' : ''}${p.stock > 0 ? 'estoque ' + p.stock + ' ' + unit : 'sem estoque'} · ${brl(Math.round(p.price * 100))}${LISTALL.includes(sel.value) ? ' o jogo' : ''}</small></li>`).join('')
+          `<li data-k="${k}"><b>${esc(p.label)}</b>${p.brand ? ' <span class="brand-tag">' + esc(p.brand) + (p.model ? ' ' + esc(p.model) : '') + '</span>' : ''} <small>${p.condition_type === 'usado' ? '<span class="dot"></span>usado · ' : (p.condition_type === 'atacado' ? '<span class="dot orange-s"></span>atacado · ' : '')}${p.stock > 0 ? 'estoque ' + p.stock + ' ' + unit : 'sem estoque'} · ${brl(Math.round(p.price * 100))}${LISTALL.includes(sel.value) ? ' o jogo' : ''}</small></li>`).join('')
         : `<li class="empty" style="cursor:default;color:var(--muted)">${CATS[sel.value].empty}</li>`;
       list.hidden = !LISTALL.includes(sel.value) && name.value.trim().length < 2;
       list.onclick = (ev) => {
         const li = ev.target.closest('li'); if (!li || li.classList.contains('empty')) return;
         const p = rows[+li.dataset.k];
-        name.value = (p.label + (p.brand ? ' ' + p.brand + (p.model ? ' ' + p.model : '') : '') + (p.condition_type === 'usado' && !/USAD/i.test(p.label) ? ' (usado)' : '')).toUpperCase(); pid.value = p.id;
-        line._p = p; applyPrice();
+        name.value = (p.label + (p.brand ? ' ' + p.brand + (p.model ? ' ' + p.model : '') : '') + (p.condition_type === 'usado' && !/USAD/i.test(p.label) ? ' (usado)' : (p.condition_type === 'atacado' && !/ATACADO/i.test(p.label + (p.name || '')) ? ' (atacado)' : ''))).toUpperCase(); pid.value = p.id;
+        line._p = p;
+        if (p.condition_type === 'atacado' && saleType.value !== 'atacado') setType('atacado');
+        applyPrice();
         if (!qty.value) qty.value = 1;
         info.textContent = 'Em estoque: ' + p.stock + ' ' + unit + (p.location ? ' · ' + p.location : '');
         list.hidden = true; recalc();

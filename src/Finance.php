@@ -230,7 +230,7 @@ final class Finance
         }
 
         // Estoque
-        $stock = Database::one("SELECT COUNT(*) total, SUM(stock <= 0) empty_n, COALESCE(SUM(stock*cost_price),0) capital FROM products WHERE active = 1 AND condition_type = 'novo'");
+        $stock = Database::one("SELECT COUNT(*) total, SUM(stock <= 0) empty_n, COALESCE(SUM(stock*cost_price),0) capital FROM products WHERE active = 1 AND condition_type IN ('novo','atacado')");
         if ((int) $stock['empty_n'] > 0 && (int) $stock['total'] > 0) {
             $add('orange', 'Produtos sem estoque', $stock['empty_n'] . ' produto(s) novo(s) está(ão) com estoque zerado. Reponha para não perder venda.');
         }
