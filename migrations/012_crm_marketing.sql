@@ -1,0 +1,19 @@
+-- CRM: reativacao de clientes, ofertas por WhatsApp e importacao
+ALTER TABLE customers ADD COLUMN source VARCHAR(40) NULL, ADD COLUMN contacted_at DATETIME NULL, ADD COLUMN opt_out TINYINT(1) NOT NULL DEFAULT 0;
+CREATE TABLE offers (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(120) NOT NULL,
+  message TEXT NOT NULL,
+  measure VARCHAR(30) NULL,
+  car_filter VARCHAR(80) NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE offer_contacts (
+  offer_id INT UNSIGNED NOT NULL,
+  customer_id INT UNSIGNED NOT NULL,
+  sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (offer_id, customer_id),
+  CONSTRAINT fk_oc_offer FOREIGN KEY (offer_id) REFERENCES offers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_oc_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

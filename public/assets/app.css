@@ -321,3 +321,7 @@ td.actions{white-space:normal;min-width:150px}
 .pill .dot.orangd{background:#f97316}
 .tag.orange{background:#ffedd5;color:#9a3412}
 .dot.orange-s{background:#f97316;box-shadow:0 0 0 3px rgba(249,115,22,.2)}
+/* CRM: reativar e ofertas */
+.mk-send{display:inline}
+.mk-preview{background:#e7fbe9;border:1px solid #b9ebc0;border-radius:12px;padding:12px 14px;margin:0 0 14px;font-size:14px;color:#0f3d17;white-space:normal}
+.filters .chk{display:flex;gap:8px;align-items:center;font-size:13px;font-weight:600}

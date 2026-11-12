@@ -3,6 +3,9 @@ use App\Database;
 
 const CRM_FIELDS = ['first_name', 'last_name', 'email', 'phone', 'tax_id', 'car', 'street', 'number', 'district', 'city', 'state', 'zip', 'country', 'notes'];
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_starts_with((string) ($_POST['action'] ?? ''), 'mk_')) {
+    require __DIR__ . '/_crm_marketing_actions.php';
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if (!App\Auth::isAdmin() && (($action === 'save' && !empty($_POST['id'])) || $action === 'delete')) {
@@ -63,6 +66,11 @@ if (!empty($_GET['history'])) {
     }
 }
 
+$crmTab = (string) ($_GET['tab'] ?? '');
+if (in_array($crmTab, ['reativar', 'ofertas', 'importar'], true)) {
+    require __DIR__ . '/_crm_marketing.php';
+    return;
+}
 $q = trim((string) ($_GET['q'] ?? ''));
 $args = [];
 $where = '1=1';
@@ -92,6 +100,7 @@ $v = fn (string $k, string $d = '') => e((string) ($edit[$k] ?? $d));
 $active = (int) $kpi['active'];
 ?>
 <section class="hero slim"><div><h1>CRM de clientes</h1><p>Carteira, historico de compras e contato rapido por WhatsApp.</p></div></section>
+<?php require __DIR__ . '/_crm_tabs.php'; ?>
 <div class="kpis">
   <div class="kpi"><span>Cadastros</span><strong><?= (int) $kpi['total'] ?></strong></div>
   <div class="kpi"><span>Ativos (90 dias)</span><strong class="ok"><?= $active ?></strong></div>
