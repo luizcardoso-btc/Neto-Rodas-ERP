@@ -52,6 +52,29 @@ final class MeasureSearchTest extends TestCase
         }
     }
 
+    public function testWholesaleSearchByWordNameAndEmptyQuery(): void
+    {
+        Database::run("INSERT INTO products (name, brand, description, condition_type, category, width, profile, rim, price, stock) VALUES
+            ('PNEU 175/70 R14 XBRI', 'XBRI', 'LOTE FECHADO 20 UN', 'atacado', 'pneu', '175', '70', '14', 250, 20),
+            ('PNEU REMOLD LOTE', NULL, NULL, 'atacado', 'pneu', NULL, NULL, NULL, 100, 50),
+            ('PNEU NOVO', 'DUNLOP', NULL, 'novo', 'pneu', '175', '70', '14', 400, 3),
+            ('JOGO DE RODA ATACADO KR R15', 'KR', NULL, 'atacado', 'roda', NULL, NULL, '15', 900, 4)");
+        try {
+            Lookup::$mode = 'atacado';
+            $this->assertCount(2, Lookup::products('atacado'));
+            $this->assertCount(2, Lookup::products(''));
+            $this->assertSame('PNEU REMOLD LOTE', Lookup::products('remold')[0]['label']);
+            $this->assertSame('LOTE FECHADO 20 UN', Lookup::products('175/70 atacado')[0]['description']);
+            $this->assertSame(['atacado', 'novo'], array_column(Lookup::products('175/70 R14'), 'condition_type'));
+            $this->assertCount(1, Lookup::products('atacado', 'roda'));
+            Lookup::$mode = 'varejo';
+            $this->assertSame([], Lookup::products('remold'));
+            $this->assertSame(['novo'], array_column(Lookup::products('175/70 R14'), 'condition_type'));
+        } finally {
+            Lookup::$mode = 'varejo';
+        }
+    }
+
     public function testSearchByDifferentMeasureFormats(): void
     {
         foreach (['175/65 R14', '175 65 14', '1756514', '175/65r14'] as $q) {

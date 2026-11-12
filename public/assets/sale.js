@@ -82,9 +82,9 @@
       const unit = CATS[sel.value].unit || 'un.';
       list.innerHTML = rows.length
         ? rows.map((p, k) =>
-          `<li data-k="${k}"><b>${esc(p.label)}</b>${p.brand ? ' <span class="brand-tag">' + esc(p.brand) + (p.model ? ' ' + esc(p.model) : '') + '</span>' : ''} <small>${p.condition_type === 'usado' ? '<span class="dot"></span>usado · ' : (p.condition_type === 'atacado' ? '<span class="dot orange-s"></span>atacado · ' : '')}${p.stock > 0 ? 'estoque ' + p.stock + ' ' + unit : 'sem estoque'} · ${brl(Math.round(p.price * 100))}${LISTALL.includes(sel.value) ? ' o jogo' : ''}</small></li>`).join('')
+          `<li data-k="${k}"><b>${esc(p.label)}</b>${p.brand ? ' <span class="brand-tag">' + esc(p.brand) + (p.model ? ' ' + esc(p.model) : '') + '</span>' : ''} ${p.description ? '<span class="desc">' + esc(String(p.description).slice(0, 90)) + '</span>' : ''}<small>${p.condition_type === 'usado' ? '<span class="dot"></span>usado · ' : (p.condition_type === 'atacado' ? '<span class="dot orange-s"></span>atacado · ' : '')}${p.stock > 0 ? 'estoque ' + p.stock + ' ' + unit : 'sem estoque'} · ${brl(Math.round(p.price * 100))}${LISTALL.includes(sel.value) ? ' o jogo' : ''}</small></li>`).join('')
         : `<li class="empty" style="cursor:default;color:var(--muted)">${CATS[sel.value].empty}</li>`;
-      list.hidden = !LISTALL.includes(sel.value) && name.value.trim().length < 2;
+      list.hidden = !LISTALL.includes(sel.value) && saleType.value !== 'atacado' && name.value.trim().length < 2;
       list.onclick = (ev) => {
         const li = ev.target.closest('li'); if (!li || li.classList.contains('empty')) return;
         const p = rows[+li.dataset.k];
@@ -98,7 +98,7 @@
       };
     };
     name.addEventListener('input', debounce(doSearch, 200));
-    name.addEventListener('focus', () => { if (LISTALL.includes(sel.value) && !pid.value) doSearch(); });
+    name.addEventListener('focus', () => { if ((LISTALL.includes(sel.value) || saleType.value === 'atacado') && !pid.value) doSearch(); });
     name.addEventListener('blur', () => setTimeout(() => (list.hidden = true), 150));
     line.querySelector('.rm').onclick = () => { line.remove(); if (!itemsBox.children.length) addItem(); recalc(); };
     line.addEventListener('input', recalc);
