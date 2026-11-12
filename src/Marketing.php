@@ -8,6 +8,66 @@ final class Marketing
 {
     public const DEFAULT_REACTIVATE = 'Olá {nome}! Aqui é da Neto Pneus e Rodas. Faz um tempo que você não aparece por aqui{carro_txt}. Criamos um grupo no WhatsApp só com ofertas de pneus e rodas, entra lá: {link}';
 
+    public const DEFAULT_BIRTHDAY = 'Feliz aniversário, {nome}! 🎉 A equipe da Neto Pneus e Rodas deseja um dia incrível e muitas conquistas. Como presente, você tem uma condição especial em pneus e rodas este mês: é só chamar aqui. Abraço!';
+
+    /** Aceita AAAA-MM-DD, DD/MM/AAAA ou DD/MM/AA. Devolve AAAA-MM-DD ou null. */
+    public static function parseBirth(mixed $v): ?string
+    {
+        $v = trim((string) $v);
+        if ($v === '') {
+            return null;
+        }
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})/', $v, $m)) {
+            [$y, $mo, $d] = [(int) $m[1], (int) $m[2], (int) $m[3]];
+        } elseif (preg_match('#^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$#', $v, $m)) {
+            [$d, $mo, $y] = [(int) $m[1], (int) $m[2], (int) $m[3]];
+            if ($y < 100) {
+                $y += $y > (int) date('y') ? 1900 : 2000;
+            }
+        } else {
+            return null;
+        }
+        if (!checkdate($mo, $d, $y) || $y < 1900 || sprintf('%04d-%02d-%02d', $y, $mo, $d) > date('Y-m-d')) {
+            return null;
+        }
+        return sprintf('%04d-%02d-%02d', $y, $mo, $d);
+    }
+
+    /**
+     * Aniversariantes de hoje ate $days dias para frente (ordenados pela proxima data).
+     * @return list<array<string,mixed>>
+     */
+    public static function birthdays(int $days = 7): array
+    {
+        $rows = Database::all(
+            "SELECT c.id, c.first_name, c.last_name, c.phone, c.car, c.birth_date, c.birthday_sent_year, c.opt_out,
+                    MAX(s.created_at) last_purchase
+             FROM customers c LEFT JOIN sales s ON s.customer_id = c.id
+             WHERE c.birth_date IS NOT NULL GROUP BY c.id"
+        );
+        $today = new \DateTimeImmutable('today');
+        $out = [];
+        foreach ($rows as $r) {
+            [$y, $m, $d] = array_map('intval', explode('-', $r['birth_date']));
+            if ($m === 2 && $d === 29 && !checkdate(2, 29, (int) $today->format('Y'))) {
+                $d = 28;
+            }
+            $next = $today->setDate((int) $today->format('Y'), $m, $d);
+            if ($next < $today) {
+                $next = $next->modify('+1 year');
+            }
+            $in = (int) $today->diff($next)->days;
+            if ($in <= $days) {
+                $r['in_days'] = $in;
+                $r['age'] = (int) $next->format('Y') - $y;
+                $r['sent'] = (int) $r['birthday_sent_year'] === (int) $next->format('Y');
+                $out[] = $r;
+            }
+        }
+        usort($out, fn ($a, $b) => [$a['in_days'], $a['first_name']] <=> [$b['in_days'], $b['first_name']]);
+        return $out;
+    }
+
     /** Texto final da mensagem com os dados do cliente. */
     public static function render(string $template, array $c, string $link = '', string $measure = ''): string
     {
@@ -152,6 +212,9 @@ final class Marketing
             }
             $d['first_name'] = ($d['first_name'] ?? '') !== '' ? $d['first_name'] : 'CLIENTE';
             $d['state'] = isset($d['state']) ? strtoupper(substr($d['state'], 0, 2)) : '';
+            if (isset($d['birth_date'])) {
+                $d['birth_date'] = self::parseBirth($d['birth_date']) ?? '';
+            }
             foreach ($d as $k => $v) {
                 $d[$k] = $k === 'email' ? mb_strtolower($v) : upper($v);
             }
@@ -221,6 +284,7 @@ final class Marketing
             'state' => ['/^(uf|estado|state)$/'],
             'zip' => ['/^(cep|zip)$/'],
             'notes' => ['/^(obs|observacao|observacoes|notas|notes)$/'],
+            'birth_date' => ['/^(nascimento|data de nascimento|data nascimento|dt nascimento|aniversario|birthday)$/', '/nasc|anivers|birthday/'],
         ];
         $map = [];
         $used = [];

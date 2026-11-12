@@ -1,7 +1,7 @@
 <?php
 use App\Database;
 
-const CRM_FIELDS = ['first_name', 'last_name', 'email', 'phone', 'tax_id', 'car', 'street', 'number', 'district', 'city', 'state', 'zip', 'country', 'notes'];
+const CRM_FIELDS = ['first_name', 'last_name', 'email', 'phone', 'tax_id', 'car', 'street', 'number', 'district', 'city', 'state', 'zip', 'country', 'notes', 'birth_date'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_starts_with((string) ($_POST['action'] ?? ''), 'mk_')) {
     require __DIR__ . '/_crm_marketing_actions.php';
@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $d['phone'] = format_phone($d['phone']);
         $d['state'] = strtoupper(substr($d['state'], 0, 2));
         $d['country'] = $d['country'] ?: 'Brasil';
+        $d['birth_date'] = App\Marketing::parseBirth($d['birth_date']) ?? '';
         if ($d['first_name'] === '') {
             flash('err', 'Informe o nome do cliente.');
         } elseif ($d['email'] !== '' && !filter_var($d['email'], FILTER_VALIDATE_EMAIL)) {
@@ -67,7 +68,7 @@ if (!empty($_GET['history'])) {
 }
 
 $crmTab = (string) ($_GET['tab'] ?? '');
-if (in_array($crmTab, ['reativar', 'ofertas', 'importar'], true)) {
+if (in_array($crmTab, ['reativar', 'aniversarios', 'ofertas', 'importar'], true)) {
     require __DIR__ . '/_crm_marketing.php';
     return;
 }
@@ -116,6 +117,7 @@ $active = (int) $kpi['active'];
       <input name="phone" inputmode="tel" placeholder="Telefone (xx xxxxx-xxxx)" value="<?= $v('phone') ?>">
       <input name="tax_id" inputmode="numeric" placeholder="CPF/CNPJ" value="<?= $v('tax_id') ?>">
       <input name="car" placeholder="Carro" value="<?= $v('car') ?>">
+      <label class="birth"><span>Data de nascimento</span><input name="birth_date" type="date" max="<?= date('Y-m-d') ?>" value="<?= $v('birth_date') ?>"></label>
       <div class="row c2"><input name="street" placeholder="Logradouro" value="<?= $v('street') ?>"><input name="number" placeholder="Numero" value="<?= $v('number') ?>"></div>
       <div class="row c2"><input name="district" placeholder="Bairro" value="<?= $v('district') ?>"><input name="city" placeholder="Cidade" value="<?= $v('city') ?>"></div>
       <div class="row c2"><input name="state" maxlength="2" placeholder="UF" value="<?= $v('state') ?>"><input name="zip" placeholder="CEP" value="<?= $v('zip') ?>"></div>

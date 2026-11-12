@@ -256,7 +256,7 @@
       const li = ev.target.closest('li'); if (!li) return;
       const c = rows[+li.dataset.k];
       document.getElementById('customer_id').value = c.id;
-      ['first_name', 'last_name', 'email', 'phone', 'tax_id', 'car', 'street', 'number', 'district', 'city', 'state', 'zip']
+      ['first_name', 'last_name', 'email', 'phone', 'tax_id', 'car', 'street', 'number', 'district', 'city', 'state', 'zip', 'birth_date']
         .forEach((f) => { const i = form.querySelector(`[name="customer[${f}]"]`); if (i) i.value = String(c[f] || '').toUpperCase(); });
       cs.value = (c.first_name + ' ' + c.last_name).toUpperCase(); cr.hidden = true;
     };

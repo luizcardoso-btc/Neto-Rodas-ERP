@@ -135,7 +135,7 @@ final class Lookup
         } elseif ($kind === 'customer') {
             $d = digits($q);
             $rows = Database::all(
-                "SELECT id, first_name, last_name, email, phone, tax_id, car, street, number, district, city, state, zip, country
+                "SELECT id, first_name, last_name, email, phone, tax_id, car, street, number, district, city, state, zip, country, birth_date
                  FROM customers
                  WHERE CONCAT_WS(' ', first_name, last_name) LIKE ? OR car LIKE ? OR email LIKE ?
                     " . ($d !== '' ? 'OR REPLACE(REPLACE(REPLACE(phone,\' \',\'\'),\'-\',\'\'),\'(\',\'\') LIKE ? OR tax_id LIKE ?' : '') . '

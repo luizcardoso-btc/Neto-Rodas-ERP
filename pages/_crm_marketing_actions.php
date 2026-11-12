@@ -21,7 +21,10 @@ try {
         }
         $s = App\Settings::all();
         $offerId = (int) ($_POST['offer_id'] ?? 0);
-        if ($offerId) {
+        if (!empty($_POST['birthday'])) {
+            $text = Marketing::render($s['birthday_message'], $c, $s['wa_group_link']);
+            Database::run('UPDATE customers SET birthday_sent_year = ? WHERE id = ?', [(int) ($_POST['year'] ?? date('Y')), $c['id']]);
+        } elseif ($offerId) {
             $o = Database::one('SELECT * FROM offers WHERE id = ?', [$offerId]);
             if (!$o) {
                 throw new DomainException("Oferta nao encontrada.");
@@ -31,7 +34,9 @@ try {
         } else {
             $text = Marketing::render($s['reactivate_message'], $c, $s['wa_group_link']);
         }
-        Database::run('UPDATE customers SET contacted_at = NOW() WHERE id = ?', [$c['id']]);
+        if (empty($_POST['birthday'])) {
+            Database::run('UPDATE customers SET contacted_at = NOW() WHERE id = ?', [$c['id']]);
+        }
         $wa = Marketing::waUrl($c['phone'], $text);
         if ($wa === '') {
             throw new DomainException('Este cliente nao tem telefone.');
@@ -45,7 +50,7 @@ try {
         if ($link !== '' && !preg_match('#^https://(chat\.whatsapp\.com|wa\.me|whatsapp\.com)/#i', $link)) {
             throw new DomainException('O link do grupo deve comecar com https://chat.whatsapp.com/');
         }
-        App\Settings::save(['wa_group_link' => $link, 'reactivate_message' => trim((string) ($_POST['reactivate_message'] ?? '')) ?: Marketing::DEFAULT_REACTIVATE]);
+        App\Settings::save(['wa_group_link' => $link, 'reactivate_message' => trim((string) ($_POST['reactivate_message'] ?? '')) ?: Marketing::DEFAULT_REACTIVATE, 'birthday_message' => trim((string) ($_POST['birthday_message'] ?? '')) ?: Marketing::DEFAULT_BIRTHDAY]);
         flash('ok', 'Mensagem e link do grupo salvos.');
     } elseif ($action === 'mk_offer_save') {
         $title = upper((string) ($_POST['title'] ?? ''));

@@ -325,3 +325,6 @@ td.actions{white-space:normal;min-width:150px}
 .mk-send{display:inline}
 .mk-preview{background:#e7fbe9;border:1px solid #b9ebc0;border-radius:12px;padding:12px 14px;margin:0 0 14px;font-size:14px;color:#0f3d17;white-space:normal}
 .filters .chk{display:flex;gap:8px;align-items:center;font-size:13px;font-weight:600}
+.birth{display:flex;flex-direction:column;gap:2px;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted,#6b6b6b)}
+.birth input{width:100%}
+.badge-n{display:inline-block;min-width:20px;padding:1px 6px;border-radius:999px;background:#e11d48;color:#fff;font-size:12px;line-height:18px;text-align:center}

@@ -61,6 +61,40 @@ $optoutBtn = fn (array $c) => '<form method="post" onsubmit="return confirm(\'Ma
 </div>
 <?php endif; ?>
 
+<?php if ($crmTab === 'aniversarios'):
+    $win = in_array((int) ($_GET['dias'] ?? 7), [0, 7, 15, 30], true) ? (int) ($_GET['dias'] ?? 7) : 7;
+    $bdays = Marketing::birthdays($win);
+    $today = array_filter($bdays, fn ($b) => $b['in_days'] === 0);
+    $noBirth = (int) Database::value('SELECT COUNT(*) FROM customers WHERE birth_date IS NULL');
+    $preview = Marketing::render($S['birthday_message'], ['first_name' => 'Maria', 'car' => 'ONIX'], $S['wa_group_link']);
+?>
+<div class="kpis">
+  <div class="kpi"><span>Aniversariantes hoje</span><strong class="ok"><?= count($today) ?></strong><small><?= count(array_filter($today, fn ($b) => !$b['sent'])) ?> ainda sem parabéns</small></div>
+  <div class="kpi"><span>Próximos <?= $win ?: 0 ?> dias</span><strong><?= count($bdays) ?></strong></div>
+  <div class="kpi"><span>Clientes sem data de nascimento</span><strong class="bad"><?= $noBirth ?></strong><small>peça a data na próxima venda</small></div>
+</div>
+<div class="card">
+  <h2>Aniversariantes 🎂</h2>
+  <p class="small muted" style="margin:4px 0 12px">Clique em <b>Parabenizar no WhatsApp</b> no dia do aniversário: a conversa abre com a mensagem pronta. O cliente fica marcado como parabenizado neste ano.</p>
+  <form class="filters" method="get" style="grid-template-columns:minmax(150px,240px) auto;margin-bottom:12px">
+    <input type="hidden" name="page" value="crm"><input type="hidden" name="tab" value="aniversarios">
+    <div><label class="f" for="dias">Mostrar</label><select id="dias" name="dias" onchange="this.form.submit()"><?php foreach ([0 => 'Só hoje', 7 => 'Próximos 7 dias', 15 => 'Próximos 15 dias', 30 => 'Próximos 30 dias'] as $k => $l): ?><option value="<?= $k ?>" <?= $k === $win ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select></div>
+  </form>
+  <div class="mk-preview"><span class="small muted">Exemplo da mensagem:</span><br><?= nl2br(e($preview)) ?></div>
+  <div class="scroll"><table><thead><tr><th>Cliente</th><th>Aniversário</th><th>Última compra</th><th></th></tr></thead><tbody>
+  <?php foreach ($bdays as $c): $bd = date('d/m', strtotime($c['birth_date'])); ?>
+    <tr style="<?= $c['sent'] ? 'opacity:.6' : '' ?>"><td><b><?= e($name($c)) ?></b> <span class="small muted"><?= e($c['phone'] ?: 'sem telefone') ?></span><?php if ($c['car']): ?> <span class="tag"><?= e($c['car']) ?></span><?php endif; ?></td>
+      <td><?= $c['in_days'] === 0 ? '<span class="tag green">HOJE</span> ' : '' ?><b><?= $bd ?></b> · <?= (int) $c['age'] ?> anos<?= $c['in_days'] > 0 ? '<br><span class="small muted">em ' . (int) $c['in_days'] . ' dia(s)</span>' : '' ?></td>
+      <td><?= $c['last_purchase'] ? e(fmt_date($c['last_purchase'])) : '<span class="muted">-</span>' ?></td>
+      <td class="actions"><?php if ($c['sent']): ?><span class="tag green">parabéns enviado</span><?php elseif ($c['opt_out']): ?><span class="small muted">não quer mensagens</span><?php elseif ($c['phone']): ?>
+        <form method="post" target="_blank" class="mk-send"><?= App\Csrf::field() ?><input type="hidden" name="action" value="mk_contact"><input type="hidden" name="birthday" value="1"><input type="hidden" name="year" value="<?= (int) date('Y', strtotime('+' . (int) $c['in_days'] . ' days')) ?>"><input type="hidden" name="id" value="<?= (int) $c['id'] ?>"><input type="hidden" name="back" value="<?= e($back) ?>"><button class="btn green sm" type="submit" onclick="setTimeout(function(){location.reload()},1500)"><?= $c['in_days'] === 0 ? 'Parabenizar no WhatsApp' : 'Parabenizar antes' ?></button></form>
+      <?php endif; ?></td></tr>
+  <?php endforeach; ?>
+  <?php if (!$bdays): ?><tr><td colspan="4" class="muted">Nenhum aniversariante nesse período.</td></tr><?php endif; ?>
+  </tbody></table></div>
+</div>
+<?php endif; ?>
+
 <?php if ($crmTab === 'ofertas'):
     $offers = Database::all('SELECT o.*, (SELECT COUNT(*) FROM offer_contacts oc WHERE oc.offer_id = o.id) sent FROM offers o ORDER BY o.active DESC, o.id DESC LIMIT 50');
     $cur = isset($_GET['offer']) ? Database::one('SELECT * FROM offers WHERE id = ?', [(int) $_GET['offer']]) : null;
@@ -136,6 +170,8 @@ $optoutBtn = fn (array $c) => '<form method="post" onsubmit="return confirm(\'Ma
     <input name="wa_group_link" placeholder="Link de convite do grupo (https://chat.whatsapp.com/...)" value="<?= e($S['wa_group_link']) ?>">
     <textarea name="reactivate_message" rows="4"><?= e($S['reactivate_message']) ?></textarea>
     <p class="small muted" style="margin:0">Mensagem de reativação. Use <b>{nome}</b>, <b>{carro_txt}</b> (" com o seu GOL") e <b>{link}</b>.</p>
+    <textarea name="birthday_message" rows="3"><?= e($S['birthday_message']) ?></textarea>
+    <p class="small muted" style="margin:0">Mensagem de aniversário. Use <b>{nome}</b>, <b>{carro}</b> e <b>{link}</b>.</p>
     <button class="btn" type="submit">Salvar</button>
   </div>
 </form>

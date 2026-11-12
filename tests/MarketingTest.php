@@ -52,6 +52,28 @@ final class MarketingTest extends TestCase
         $this->assertSame('75998096701', substr(digits($p['phone']), -11));
     }
 
+    public function testBirthdaysAndBirthDateParsing(): void
+    {
+        $this->assertSame('1990-03-25', Marketing::parseBirth('25/03/1990'));
+        $this->assertSame('1990-03-25', Marketing::parseBirth('1990-03-25'));
+        $this->assertNull(Marketing::parseBirth('31/02/1990'));
+        $this->assertNull(Marketing::parseBirth('x'));
+        $today = date('m-d');
+        Database::insert("INSERT INTO customers (first_name, phone, birth_date) VALUES ('HOJE', '75 91111-1111', ?)", [(date('Y') - 30) . '-' . $today]);
+        $in3 = date('m-d', strtotime('+3 days'));
+        Database::insert("INSERT INTO customers (first_name, phone, birth_date) VALUES ('LOGO', '75 92222-2222', ?)", ['1985-' . $in3]);
+        Database::insert("INSERT INTO customers (first_name, phone, birth_date) VALUES ('LONGE', '75 93333-3333', ?)", ['1985-' . date('m-d', strtotime('+40 days'))]);
+        $b = Marketing::birthdays(7);
+        $this->assertSame(['HOJE', 'LOGO'], array_column($b, 'first_name'));
+        $this->assertSame([0, 3], array_column($b, 'in_days'));
+        $this->assertSame(30, $b[0]['age']);
+        $this->assertFalse($b[0]['sent']);
+        $this->assertCount(1, Marketing::birthdays(0));
+        $csv = "Nome;Celular;Data de Nascimento\nAna;75 94444-4444;05/07/1992\n";
+        Marketing::importCsv($csv, 'x');
+        $this->assertSame('1992-07-05', Database::value("SELECT birth_date FROM customers WHERE first_name = 'ANA'"));
+    }
+
     public function testReactivateListAndOfferTargets(): void
     {
         $old = Database::insert("INSERT INTO customers (first_name, phone, car) VALUES ('ANTIGO', '75 91111-1111', 'GOL')");

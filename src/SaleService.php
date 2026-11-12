@@ -544,7 +544,7 @@ final class SaleService
         if (!$c) {
             return null;
         }
-        $fields = ['first_name', 'last_name', 'email', 'phone', 'tax_id', 'car', 'street', 'number', 'district', 'city', 'state', 'zip', 'notes'];
+        $fields = ['first_name', 'last_name', 'email', 'phone', 'tax_id', 'car', 'street', 'number', 'district', 'city', 'state', 'zip', 'notes', 'birth_date'];
         $clean = [];
         foreach ($fields as $f) {
             $clean[$f] = trim((string) ($c[$f] ?? ''));
@@ -552,6 +552,7 @@ final class SaleService
         $clean['tax_id'] = digits($clean['tax_id']);
         $clean['phone'] = format_phone($clean['phone']);
         $clean['state'] = strtoupper(substr($clean['state'], 0, 2));
+        $clean['birth_date'] = \App\Marketing::parseBirth($clean['birth_date']) ?? '';
 
         $id = !empty($c['customer_id']) ? (int) $c['customer_id'] : null;
         if (!$id && $clean['tax_id'] !== '') {

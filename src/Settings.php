@@ -18,6 +18,7 @@ final class Settings
         'creditor_monthly_goal' => '0',
         'wa_group_link' => '',
         'reactivate_message' => \App\Marketing::DEFAULT_REACTIVATE,
+        'birthday_message' => \App\Marketing::DEFAULT_BIRTHDAY,
         'quote_terms' => 'ORCAMENTO SUJEITO A DISPONIBILIDADE DE ESTOQUE. VALORES PODEM SER ALTERADOS APOS A VALIDADE.',
     ];
 
@@ -45,7 +46,7 @@ final class Settings
                 'quote_validity_days' => (string) max(1, min(365, (int) $data[$k])),
                 'tax_rate', 'card_fee_rate' => (string) max(0, min(100, parse_money((string) $data[$k]))),
                 'creditor_monthly_goal' => (string) max(0, parse_money((string) $data[$k])),
-                'wa_group_link', 'reactivate_message' => trim((string) $data[$k]),
+                'wa_group_link', 'reactivate_message', 'birthday_message' => trim((string) $data[$k]),
                 default => upper((string) $data[$k]),
             };
             Database::run('INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)', [$k, $v]);
