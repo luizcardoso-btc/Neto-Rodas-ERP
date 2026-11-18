@@ -6,6 +6,8 @@ use App\Settings;
 
 const FIN_TABS = ['resumo' => 'Resumo', 'lucro' => 'Lucro estimado', 'despesas' => 'Despesas e impostos', 'credor' => 'Credor', 'receber' => 'A receber', 'custos' => 'Custos e taxas'];
 
+require __DIR__ . '/_receivables_actions.php';
+
 $tab = isset(FIN_TABS[$_GET['tab'] ?? '']) ? $_GET['tab'] : 'resumo';
 $pkey = isset(Finance::PERIODS[$_GET['p'] ?? '']) ? $_GET['p'] : 'mes';
 $cm = preg_match('/^\d{4}-\d{2}$/', $_GET['cm'] ?? '') ? $_GET['cm'] : date('Y-m');
@@ -408,7 +410,7 @@ function fin_table(array $rows, string $table, bool $hasCustomer, string $tab): 
   <div class="card caps"><h2>Contas a receber</h2>
     <form method="post" class="row c4" style="margin:12px 0"><?= App\Csrf::field() ?><input type="hidden" name="action" value="add_receivable"><input type="hidden" name="tab" value="receber">
       <input name="description" placeholder="DESCRIÇÃO" required style="grid-column:span 2"><input name="amount" inputmode="decimal" placeholder="VALOR" required><input name="due_date" type="date" aria-label="Vencimento"><button class="btn green sm" type="submit" style="grid-column:span 4">Adicionar</button></form>
-    <?php fin_table($ar, 'accounts_receivable', true, 'receber'); ?></div>
+    <?php $arRows = App\Receivables::list(false, 200); $arBack = url('financeiro', ['tab' => 'receber']); require __DIR__ . '/_receivables.php'; ?></div>
 
 <?php else: /* custos */ ?>
   <?php fin_period_bar('custos', $pkey, $cm, $range); $byM = App\CardFees::byMachine($range['from'], $range['to']); $machines = App\CardFees::machines(false); $rm = App\CardFees::rateMap(); ?>

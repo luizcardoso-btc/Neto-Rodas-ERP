@@ -148,15 +148,81 @@ final class Loans
         }
     }
 
-    /** Apaga um emprestimo sem baixas, desfazendo o estoque. */
-    public static function delete(int $loanId): void
+    /** Edita os dados do emprestimo. Mudou a quantidade: o estoque acompanha (se o emprestimo mexeu no estoque). */
+    public static function update(int $loanId, array $d): void
     {
         $loan = self::find($loanId);
         if (!$loan) {
+            throw new DomainException('Emprestimo nao encontrado.');
+        }
+        $partner = upper((string) ($d['partner'] ?? '')) ?: $loan['partner'];
+        $qty = (int) ($d['quantity'] ?? $loan['quantity']);
+        if ($qty < max(1, $loan['settled'])) {
+            throw new DomainException(sprintf('A quantidade nao pode ser menor que %d (ja devolvido/pago).', max(1, $loan['settled'])));
+        }
+        $diff = $qty - $loan['quantity'];
+        if ($diff > 0 && $loan['stock_moved'] && $loan['direction'] === 'out' && $loan['product_id']
+            && (int) Database::value('SELECT stock FROM products WHERE id = ?', [$loan['product_id']]) < $diff) {
+            throw new DomainException('Estoque insuficiente para aumentar a quantidade emprestada.');
+        }
+        $pdo = Database::pdo();
+        $pdo->beginTransaction();
+        try {
+            if ($diff !== 0 && $loan['stock_moved'] && $loan['product_id']) {
+                self::stock((int) $loan['product_id'], $loan['direction'] === 'out' ? -$diff : $diff, "Emprestimo #$loanId editado (quantidade {$loan['quantity']} -> $qty)");
+            }
+            $value = trim((string) ($d['unit_value'] ?? '')) === '' ? null : parse_money($d['unit_value']);
+            Database::run(
+                'UPDATE loans SET partner = ?, partner_phone = ?, description = ?, quantity = ?, unit_value = ?, loan_date = ?, due_date = ?, notes = ?, status = ? WHERE id = ?',
+                [mb_substr($partner, 0, 120), format_phone((string) ($d['partner_phone'] ?? '')) ?: null, mb_substr(upper((string) ($d['description'] ?? '')) ?: $loan['description'], 0, 200),
+                    $qty, $value, self::date($d['loan_date'] ?? null) ?? $loan['loan_date'], self::date($d['due_date'] ?? null),
+                    mb_substr(upper((string) ($d['notes'] ?? '')), 0, 255) ?: null, $qty - $loan['settled'] > 0 ? 'aberto' : 'fechado', $loanId]
+            );
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /** Desfaz uma baixa lancada errado: devolucao volta o estoque; pagamento apaga a venda/conta que ele gerou. */
+    public static function undoSettlement(int $settlementId): void
+    {
+        $s = Database::one('SELECT s.*, l.direction, l.stock_moved, l.product_id FROM loan_settlements s JOIN loans l ON l.id = s.loan_id WHERE s.id = ?', [$settlementId]);
+        if (!$s) {
             return;
         }
-        if ($loan['settled'] > 0) {
-            throw new DomainException('Este emprestimo ja tem devolucao/pagamento registrado; nao pode ser apagado.');
+        if ($s['kind'] === 'pagamento' && $s['sale_id'] && Database::value('SELECT id FROM sales WHERE id = ?', [$s['sale_id']])) {
+            SaleService::delete((int) $s['sale_id']); // reabre o emprestimo (onSaleDeleted)
+            return;
+        }
+        $pdo = Database::pdo();
+        $pdo->beginTransaction();
+        try {
+            if ($s['kind'] === 'devolucao' && $s['stock_moved'] && $s['product_id']) {
+                self::stock((int) $s['product_id'], $s['direction'] === 'out' ? -(int) $s['quantity'] : (int) $s['quantity'], "Baixa desfeita (emprestimo #{$s['loan_id']})");
+            }
+            if ($s['payable_id']) {
+                Database::run('DELETE FROM accounts_payable WHERE id = ?', [$s['payable_id']]);
+            }
+            Database::run('DELETE FROM loan_settlements WHERE id = ?', [$settlementId]);
+            Database::run("UPDATE loans SET status = 'aberto' WHERE id = ?", [$s['loan_id']]);
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /** Apaga o emprestimo por completo: desfaz as baixas (e as vendas/contas que geraram) e o estoque. */
+    public static function delete(int $loanId): void
+    {
+        foreach (Database::all('SELECT id FROM loan_settlements WHERE loan_id = ? ORDER BY id DESC', [$loanId]) as $s) {
+            self::undoSettlement((int) $s['id']);
+        }
+        $loan = self::find($loanId);
+        if (!$loan) {
+            return;
         }
         $pdo = Database::pdo();
         $pdo->beginTransaction();

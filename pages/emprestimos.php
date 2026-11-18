@@ -13,12 +13,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'loan_settle') {
             Loans::settle((int) $_POST['id'], $_POST, $u);
             flash('ok', 'Baixa registrada.' . (($_POST['kind'] ?? '') === 'pagamento' ? ' O valor foi lancado (venda de atacado ou conta paga no Financeiro).' : ''));
+        } elseif ($action === 'loan_edit') {
+            Loans::update((int) $_POST['id'], $_POST);
+            flash('ok', 'Emprestimo atualizado.');
+        } elseif ($action === 'loan_undo') {
+            if (!App\Auth::isAdmin()) {
+                throw new DomainException('Somente o administrador pode desfazer baixas.');
+            }
+            Loans::undoSettlement((int) $_POST['sid']);
+            flash('ok', 'Baixa desfeita: o emprestimo voltou a ficar em aberto.');
         } elseif ($action === 'loan_delete') {
             if (!App\Auth::isAdmin()) {
                 throw new DomainException('Somente o administrador pode apagar emprestimos.');
             }
             Loans::delete((int) $_POST['id']);
-            flash('ok', 'Emprestimo apagado e estoque desfeito.');
+            flash('ok', 'Emprestimo apagado. Estoque, baixas e lancamentos gerados por ele foram desfeitos.');
         }
     } catch (DomainException $ex) {
         flash('err', $ex->getMessage());
@@ -100,7 +109,8 @@ $condLabel = ['novo' => '', 'usado' => ' (USADO)', 'atacado' => ' (ATACADO)'];
           <?= $r['notes'] ? '<br><span class="small">' . e($r['notes']) . '</span>' : '' ?></p>
         <?php if ($r['status'] === 'aberto'): ?><p class="small"><b>Falta acertar: <?= (int) $r['pending'] ?></b> de <?= (int) $r['quantity'] ?></p><?php endif; ?>
         <?php foreach ($sett[(int) $r['id']] ?? [] as $s): ?>
-          <p class="small muted loan-ev">✓ <?= e(fmt_date($s['settle_date'])) ?>: <?= $s['kind'] === 'devolucao' ? ((int) $s['quantity'] . ' devolvido(s)') : ((int) $s['quantity'] . ' pago(s), ' . money($s['amount']) . ($s['sale_id'] ? ' · <a href="' . e(url('vendas', ['id' => $s['sale_id']])) . '">venda #' . (int) $s['sale_id'] . '</a>' : ' · conta paga no Financeiro')) ?></p>
+          <div class="small muted loan-ev">✓ <?= e(fmt_date($s['settle_date'])) ?>: <?= $s['kind'] === 'devolucao' ? ((int) $s['quantity'] . ' devolvido(s)') : ((int) $s['quantity'] . ' pago(s), ' . money($s['amount']) . ($s['sale_id'] ? ' · <a href="' . e(url('vendas', ['id' => $s['sale_id']])) . '">venda #' . (int) $s['sale_id'] . '</a>' : ' · conta paga no Financeiro')) ?>
+            <?php if (App\Auth::isAdmin()): ?><form method="post" style="display:inline" onsubmit="return confirm('Desfazer esta baixa?<?= $s['sale_id'] ? ' A venda gerada por ela sera apagada.' : '' ?>')"><?= App\Csrf::field() ?><input type="hidden" name="action" value="loan_undo"><input type="hidden" name="sid" value="<?= (int) $s['id'] ?>"><button class="linklike danger-t" type="submit">desfazer</button></form><?php endif; ?></div>
         <?php endforeach; ?>
         <?php if ($r['status'] === 'aberto'): ?>
         <details class="loan-settle"><summary class="btn sm">Dar baixa (devolução ou pagamento)</summary>
@@ -117,10 +127,22 @@ $condLabel = ['novo' => '', 'usado' => ' (USADO)', 'atacado' => ' (ATACADO)'];
             <button class="btn green" type="submit">Confirmar baixa</button>
           </form>
         </details>
-        <?php if (App\Auth::isAdmin() && !(int) $r['settled']): ?>
-          <form method="post" onsubmit="return confirm('Apagar este emprestimo? O estoque sera desfeito.')" style="display:inline"><?= App\Csrf::field() ?><input type="hidden" name="action" value="loan_delete"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="linklike danger-t" type="submit">apagar</button></form>
         <?php endif; ?>
-        <?php endif; ?>
+        <div class="loan-tools">
+          <details class="loan-edit"><summary class="btn ghost sm">Editar</summary>
+            <form method="post" class="stack" style="margin-top:10px"><?= App\Csrf::field() ?><input type="hidden" name="action" value="loan_edit"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
+              <div class="row c2"><input name="partner" required value="<?= e($r['partner']) ?>" aria-label="Empresa parceira"><input name="partner_phone" value="<?= e((string) $r['partner_phone']) ?>" placeholder="Telefone" aria-label="Telefone"></div>
+              <input name="description" value="<?= e($r['description']) ?>" aria-label="Descricao">
+              <div class="row c2"><label class="birth"><span>Quantidade</span><input type="number" name="quantity" min="<?= max(1, (int) $r['settled']) ?>" value="<?= (int) $r['quantity'] ?>"></label><label class="birth"><span>Valor por unidade</span><input name="unit_value" inputmode="decimal" value="<?= $r['unit_value'] !== null ? e(number_format((float) $r['unit_value'], 2, ',', '')) : '' ?>"></label></div>
+              <div class="row c2"><label class="birth"><span>Data</span><input type="date" name="loan_date" value="<?= e($r['loan_date']) ?>"></label><label class="birth"><span>Devolver até</span><input type="date" name="due_date" value="<?= e((string) $r['due_date']) ?>"></label></div>
+              <input name="notes" value="<?= e((string) $r['notes']) ?>" placeholder="Observações" aria-label="Observacoes">
+              <?php if ($r['stock_moved']): ?><p class="small muted" style="margin:0">Mudou a quantidade? O estoque é ajustado junto.</p><?php endif; ?>
+              <button class="btn" type="submit">Salvar alterações</button>
+            </form></details>
+          <?php if (App\Auth::isAdmin()): ?>
+          <form method="post" onsubmit="return confirm('Apagar o emprestimo #<?= (int) $r['id'] ?>? O estoque volta como estava<?= (int) $r['settled'] ? ' e as baixas (devolucoes, vendas e contas geradas) serao desfeitas' : '' ?>. Isso nao pode ser desfeito.')"><?= App\Csrf::field() ?><input type="hidden" name="action" value="loan_delete"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><button class="btn danger sm" type="submit">Apagar</button></form>
+          <?php endif; ?>
+        </div>
       </article>
     <?php endforeach; ?>
     <?php if (!$rows): ?><p class="muted">Nenhum empréstimo <?= $ver === 'aberto' ? 'em aberto' : 'neste filtro' ?>.</p><?php endif; ?>

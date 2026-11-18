@@ -92,4 +92,45 @@ final class LoansTest extends TestCase
             $this->assertNull(Loans::find($id));
         }
     }
+
+    public function testEditUndoAndDeleteWithSettlements(): void
+    {
+        $id = Loans::create(['direction' => 'out', 'partner' => 'A', 'product_id' => $this->pid, 'quantity' => 3, 'unit_value' => '100']);
+        $this->assertSame(7, $this->stock());
+        Loans::update($id, ['partner' => 'b', 'quantity' => 5, 'description' => '', 'due_date' => '2026-12-01']);
+        $this->assertSame(5, $this->stock());
+        $l = Loans::find($id);
+        $this->assertSame(['B', 5, '2026-12-01'], [$l['partner'], $l['quantity'], $l['due_date']]);
+
+        Loans::settle($id, ['kind' => 'devolucao', 'quantity' => 2]);
+        $this->assertSame(7, $this->stock());
+        Loans::settle($id, ['kind' => 'pagamento', 'quantity' => 1, 'amount' => '100']);
+        $this->assertSame(1, (int) Database::value("SELECT COUNT(*) FROM sales"));
+        try {
+            Loans::update($id, ['quantity' => 2]);
+            $this->fail('nao pode ficar menor que o ja acertado');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('menor que 3', $e->getMessage());
+        }
+        // desfaz a devolucao
+        $sid = (int) Database::value("SELECT id FROM loan_settlements WHERE kind = 'devolucao'");
+        Loans::undoSettlement($sid);
+        $this->assertSame(5, $this->stock());
+        $this->assertSame(4, Loans::find($id)['pending']);
+        // apaga tudo: venda do pagamento some e o estoque volta ao inicio
+        Loans::delete($id);
+        $this->assertSame(10, $this->stock());
+        $this->assertSame(0, (int) Database::value('SELECT COUNT(*) FROM sales'));
+        $this->assertNull(Loans::find($id));
+    }
+
+    public function testBorrowPaidThenUndoRemovesPayable(): void
+    {
+        $id = Loans::create(['direction' => 'in', 'partner' => 'X', 'description' => 'pneu', 'quantity' => 1]);
+        Loans::settle($id, ['kind' => 'pagamento', 'quantity' => 1, 'amount' => '300']);
+        $this->assertSame(1, (int) Database::value('SELECT COUNT(*) FROM accounts_payable'));
+        Loans::undoSettlement((int) Database::value('SELECT id FROM loan_settlements'));
+        $this->assertSame(0, (int) Database::value('SELECT COUNT(*) FROM accounts_payable'));
+        $this->assertSame('aberto', Loans::find($id)['status']);
+    }
 }

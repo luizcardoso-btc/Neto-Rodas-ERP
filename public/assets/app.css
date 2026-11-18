@@ -352,3 +352,19 @@ td.actions{white-space:normal;min-width:150px}
 @media(max-width:900px){.loan-cols{grid-template-columns:minmax(0,1fr)}}
 .chk[hidden],.row[hidden]{display:none!important}
 .linklike{display:inline!important;width:auto!important;min-height:0!important;margin:0!important;vertical-align:baseline}
+/* Contas a receber (PDV e Financeiro) */
+.ar-list{display:grid;gap:8px}
+.ar-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;border:1px solid var(--line,#e5e7eb);border-left:4px solid #f59e0b;border-radius:12px;padding:10px 12px}
+.ar-row.late{border-left-color:#dc2626}
+.ar-row.paid{border-left-color:#16a34a;opacity:.6}
+.ar-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ar-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
+.ar-d{position:relative}
+.ar-d summary{list-style:none}
+.ar-d summary::-webkit-details-marker{display:none}
+.ar-pop{position:absolute;right:0;z-index:30;width:260px;margin-top:6px;background:#fff;border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:12px;box-shadow:0 12px 30px rgba(0,0,0,.15)}
+.loan-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin-top:10px}
+.loan-edit{flex:1 1 100%}
+.loan-edit summary{list-style:none;display:inline-block}
+.loan-edit summary::-webkit-details-marker{display:none}
+.loan-edit[open]{border-top:1px dashed var(--line,#e5e7eb);padding-top:8px}
