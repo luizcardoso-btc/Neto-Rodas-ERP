@@ -23,7 +23,7 @@ $recent = Database::all(
     <?php foreach ($recent as $r): ?>
       <p style="display:flex;justify-content:space-between;gap:8px;margin:10px 0;border-bottom:1px solid #f1f5f9;padding-bottom:8px">
         <span><b>#<?= (int) $r['id'] ?></b> <?= e($r['customer'] ?: 'Sem cliente') ?><br><span class="small muted"><?= e(fmt_date($r['created_at'], true)) ?></span></span>
-        <b><?= money($r['total']) ?></b></p>
+        <span style="text-align:right"><b><?= money($r['total']) ?></b><?php if (App\Auth::isAdmin()): ?><br><a class="small" href="<?= e(url('vendas', ['edit' => $r['id']])) ?>">Editar</a> · <form method="post" action="index.php?page=vendas" style="display:inline" onsubmit="return confirm('Apagar a venda #<?= (int) $r['id'] ?>? Os itens voltam ao estoque. Isso nao pode ser desfeito.')"><?= App\Csrf::field() ?><input type="hidden" name="action" value="delete_sale"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><input type="hidden" name="back" value="<?= e(url('pdv')) ?>"><button class="linklike danger-t" type="submit">Apagar</button></form><?php endif; ?></span></p>
     <?php endforeach; ?>
     <?php if (!$recent): ?><p class="muted">Nenhuma venda nos ultimos 3 dias.</p><?php endif; ?>
   </div>

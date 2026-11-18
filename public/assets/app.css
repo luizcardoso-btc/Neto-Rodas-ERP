@@ -329,3 +329,25 @@ td.actions{white-space:normal;min-width:150px}
 .birth input{width:100%}
 .badge-n{display:inline-block;min-width:20px;padding:1px 6px;border-radius:999px;background:#e11d48;color:#fff;font-size:12px;line-height:18px;text-align:center}
 .ac-list li .desc,.suggest li .desc{display:block;font-size:12px;color:var(--muted,#6b6b6b);margin:2px 0}
+.linklike{background:none;border:0;padding:0;font:inherit;font-size:13px;cursor:pointer;text-decoration:underline}.danger-t{color:#dc2626}
+/* Emprestimos */
+.loan-cols{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)}
+.loan-dir{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.loan-dir label{position:relative;cursor:pointer}
+.loan-dir input{position:absolute;opacity:0}
+.loan-dir span{display:flex;flex-direction:column;gap:2px;border:2px solid var(--line,#e5e7eb);border-radius:14px;padding:12px 14px}
+.loan-dir small{color:var(--muted,#6b6b6b);font-size:12px}
+.loan-dir input:checked+span{border-color:#f5b800;background:#fff8d6}
+.loan-dir input:focus-visible+span{outline:3px solid #f5b800;outline-offset:2px}
+.loan-list{display:grid;gap:12px;margin-top:12px}
+.loan{border:1px solid var(--line,#e5e7eb);border-left:5px solid #f59e0b;border-radius:14px;padding:12px 14px}
+.loan.out{border-left-color:#3b82f6}
+.loan.fechado{opacity:.65}
+.loan header{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.loan p{margin:8px 0 0}
+.loan-ev{margin:4px 0 0!important}
+.loan-settle summary{list-style:none;display:inline-block;margin-top:10px}
+.loan-settle summary::-webkit-details-marker{display:none}
+.bad{color:#dc2626}
+@media(max-width:900px){.loan-cols{grid-template-columns:minmax(0,1fr)}}
+.chk[hidden],.row[hidden]{display:none!important}

@@ -1,0 +1,255 @@
+<?php
+declare(strict_types=1);
+
+namespace App;
+
+use DomainException;
+
+/**
+ * Emprestimos de pneus/rodas com parceiros.
+ *  - "out" (emprestamos): o pneu sai do nosso estoque. Fecha quando o parceiro devolve (volta ao estoque)
+ *    ou paga (vira uma VENDA de atacado para o parceiro: entra na receita e no custo).
+ *  - "in" (pegamos emprestado): pode entrar no nosso estoque para vender no PDV. Fecha quando devolvemos
+ *    (sai do estoque) ou pagamos (conta paga de mercadoria no Financeiro).
+ */
+final class Loans
+{
+    /** @param array<string,mixed> $d */
+    public static function create(array $d, ?string $user = null): int
+    {
+        $dir = ($d['direction'] ?? '') === 'in' ? 'in' : (($d['direction'] ?? '') === 'out' ? 'out' : '');
+        if ($dir === '') {
+            throw new DomainException('Escolha se a loja PEGOU emprestado ou EMPRESTOU.');
+        }
+        $partner = upper((string) ($d['partner'] ?? ''));
+        if ($partner === '') {
+            throw new DomainException('Informe a empresa parceira.');
+        }
+        $qty = (int) ($d['quantity'] ?? 0);
+        if ($qty < 1) {
+            throw new DomainException('Informe a quantidade (minimo 1).');
+        }
+        $pid = !empty($d['product_id']) ? (int) $d['product_id'] : null;
+        $product = $pid ? Database::one('SELECT * FROM products WHERE id = ?', [$pid]) : null;
+        if ($pid && !$product) {
+            throw new DomainException('Produto nao encontrado no estoque.');
+        }
+        $desc = upper((string) ($d['description'] ?? '')) ?: upper((string) ($product['name'] ?? ''));
+        if ($desc === '') {
+            throw new DomainException('Escolha o produto do estoque ou descreva o pneu/roda (medida, marca).');
+        }
+        $value = trim((string) ($d['unit_value'] ?? '')) === '' ? null : parse_money($d['unit_value']);
+        $date = self::date($d['loan_date'] ?? null) ?? date('Y-m-d');
+        $due = self::date($d['due_date'] ?? null);
+        // Emprestamos: sai do estoque se o produto foi escolhido. Pegamos: entra so se pedido.
+        $move = $product && ($dir === 'out' || !empty($d['add_stock']));
+        if ($move && $dir === 'out' && (int) $product['stock'] < $qty) {
+            throw new DomainException(sprintf('Estoque insuficiente de "%s": tem %d, emprestando %d.', $product['name'], $product['stock'], $qty));
+        }
+
+        $pdo = Database::pdo();
+        $pdo->beginTransaction();
+        try {
+            $id = Database::insert(
+                'INSERT INTO loans (direction, partner, partner_phone, product_id, description, quantity, unit_value, stock_moved, loan_date, due_date, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                [$dir, mb_substr($partner, 0, 120), format_phone((string) ($d['partner_phone'] ?? '')) ?: null, $pid, mb_substr($desc, 0, 200), $qty, $value, $move ? 1 : 0, $date, $due,
+                    mb_substr(upper((string) ($d['notes'] ?? '')), 0, 255) ?: null, $user]
+            );
+            if ($move) {
+                self::stock($pid, $dir === 'out' ? -$qty : $qty, ($dir === 'out' ? 'Emprestado para ' : 'Pegamos emprestado de ') . $partner . " (emprestimo #$id)");
+            }
+            $pdo->commit();
+            return $id;
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Baixa (total ou parcial): devolucao do pneu ou pagamento em dinheiro.
+     * @param array<string,mixed> $d
+     */
+    public static function settle(int $loanId, array $d, ?array $user = null): void
+    {
+        $loan = self::find($loanId);
+        if (!$loan) {
+            throw new DomainException('Emprestimo nao encontrado.');
+        }
+        if ($loan['status'] === 'fechado') {
+            throw new DomainException('Este emprestimo ja foi fechado.');
+        }
+        $kind = ($d['kind'] ?? '') === 'pagamento' ? 'pagamento' : 'devolucao';
+        $qty = (int) ($d['quantity'] ?? 0);
+        if ($qty < 1 || $qty > $loan['pending']) {
+            throw new DomainException(sprintf('Quantidade invalida: faltam %d para fechar este emprestimo.', $loan['pending']));
+        }
+        $date = self::date($d['settle_date'] ?? null) ?? date('Y-m-d');
+        $amount = null;
+        $method = null;
+        if ($kind === 'pagamento') {
+            $amount = parse_money($d['amount'] ?? 0);
+            if ($amount <= 0) {
+                throw new DomainException('Informe o valor pago.');
+            }
+            $method = in_array($d['method'] ?? '', ['dinheiro', 'pix', 'prazo'], true) ? $d['method'] : 'pix';
+        }
+        $partner = $loan['partner'];
+        $saleId = null;
+        $payableId = null;
+
+        $pdo = Database::pdo();
+        $pdo->beginTransaction();
+        try {
+            if ($kind === 'devolucao') {
+                if ($loan['stock_moved'] && $loan['product_id']) {
+                    self::stock((int) $loan['product_id'], $loan['direction'] === 'out' ? $qty : -$qty,
+                        ($loan['direction'] === 'out' ? 'Devolvido por ' : 'Devolvido para ') . $partner . " (emprestimo #$loanId)");
+                }
+            } elseif ($loan['direction'] === 'out') {
+                // Parceiro pagou: vira venda de atacado (receita + custo). O pneu ja tinha saido do estoque no emprestimo:
+                // a venda da a baixa de novo e aqui devolvemos a mesma quantidade, para nao contar duas vezes.
+                $pdo->rollBack(); // a venda abre a propria transacao
+                $unit = round($amount / $qty, 2);
+                $sale = SaleService::create([
+                    'request_token' => self::uuid(),
+                    'sale_type' => 'atacado',
+                    'notes' => "EMPRESTIMO #$loanId - $partner",
+                    'customer' => ['first_name' => $partner, 'phone' => (string) $loan['partner_phone'], 'notes' => 'EMPRESA PARCEIRA (EMPRESTIMOS)'],
+                    'items' => [['product_id' => $loan['stock_moved'] ? $loan['product_id'] : null, 'name' => $loan['description'], 'quantity' => $qty,
+                        'unit_price' => $unit, 'category' => 'pneu']],
+                    'payments' => [['method' => $method, 'amount' => $unit * $qty, 'due' => self::date($d['due'] ?? null)]],
+                ], 'emprestimo', true);
+                $saleId = $sale['id'];
+                $pdo->beginTransaction();
+                if ($loan['stock_moved'] && $loan['product_id']) {
+                    self::stock((int) $loan['product_id'], $qty, "Emprestimo #$loanId pago (venda #$saleId)");
+                }
+            } else {
+                // Nos pagamos o parceiro: conta de mercadoria paga no Financeiro.
+                $payableId = Database::insert(
+                    "INSERT INTO accounts_payable (description, category, amount, due_date, paid_at, kind) VALUES (?, 'PNEUS', ?, ?, ?, 'ativo')",
+                    ["EMPRESTIMO #$loanId - PAGO A $partner ($qty x {$loan['description']})", $amount, $date, $date . ' 12:00:00']
+                );
+            }
+            Database::insert(
+                'INSERT INTO loan_settlements (loan_id, kind, quantity, amount, method, sale_id, payable_id, settle_date, notes) VALUES (?,?,?,?,?,?,?,?,?)',
+                [$loanId, $kind, $qty, $amount, $method, $saleId, $payableId, $date, mb_substr(upper((string) ($d['notes'] ?? '')), 0, 255) ?: null]
+            );
+            if ($qty === $loan['pending']) {
+                Database::run("UPDATE loans SET status = 'fechado' WHERE id = ?", [$loanId]);
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /** Apaga um emprestimo sem baixas, desfazendo o estoque. */
+    public static function delete(int $loanId): void
+    {
+        $loan = self::find($loanId);
+        if (!$loan) {
+            return;
+        }
+        if ($loan['settled'] > 0) {
+            throw new DomainException('Este emprestimo ja tem devolucao/pagamento registrado; nao pode ser apagado.');
+        }
+        $pdo = Database::pdo();
+        $pdo->beginTransaction();
+        try {
+            if ($loan['stock_moved'] && $loan['product_id']) {
+                self::stock((int) $loan['product_id'], $loan['direction'] === 'out' ? (int) $loan['quantity'] : -(int) $loan['quantity'], "Emprestimo #$loanId apagado");
+            }
+            Database::run('DELETE FROM loans WHERE id = ?', [$loanId]);
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /** Venda gerada por um emprestimo pago foi apagada: o emprestimo volta a ficar em aberto (o pneu continua com o parceiro). */
+    public static function onSaleDeleted(int $saleId): void
+    {
+        foreach (Database::all('SELECT s.*, l.stock_moved, l.product_id FROM loan_settlements s JOIN loans l ON l.id = s.loan_id WHERE s.sale_id = ?', [$saleId]) as $s) {
+            if ($s['stock_moved'] && $s['product_id']) {
+                self::stock((int) $s['product_id'], -(int) $s['quantity'], "Venda #$saleId apagada: pneu segue com o parceiro (emprestimo #{$s['loan_id']})");
+            }
+            Database::run('DELETE FROM loan_settlements WHERE id = ?', [$s['id']]);
+            Database::run("UPDATE loans SET status = 'aberto' WHERE id = ?", [$s['loan_id']]);
+        }
+    }
+
+    /** @return array<string,mixed>|null */
+    public static function find(int $id): ?array
+    {
+        $l = Database::one('SELECT l.*, COALESCE((SELECT SUM(quantity) FROM loan_settlements s WHERE s.loan_id = l.id),0) settled FROM loans l WHERE l.id = ?', [$id]);
+        if ($l) {
+            $l['settled'] = (int) $l['settled'];
+            $l['quantity'] = (int) $l['quantity'];
+            $l['pending'] = $l['quantity'] - $l['settled'];
+        }
+        return $l;
+    }
+
+    /** @return list<array<string,mixed>> */
+    public static function list(string $status = 'aberto', string $dir = ''): array
+    {
+        $w = ['1=1'];
+        $a = [];
+        if (in_array($status, ['aberto', 'fechado'], true)) {
+            $w[] = 'l.status = ?';
+            $a[] = $status;
+        }
+        if (in_array($dir, ['in', 'out'], true)) {
+            $w[] = 'l.direction = ?';
+            $a[] = $dir;
+        }
+        $rows = Database::all(
+            'SELECT l.*, COALESCE((SELECT SUM(quantity) FROM loan_settlements s WHERE s.loan_id = l.id),0) settled, p.stock product_stock, p.condition_type
+             FROM loans l LEFT JOIN products p ON p.id = l.product_id WHERE ' . implode(' AND ', $w) . ' ORDER BY l.status, l.due_date IS NULL, l.due_date, l.id DESC LIMIT 300',
+            $a
+        );
+        foreach ($rows as &$r) {
+            $r['pending'] = (int) $r['quantity'] - (int) $r['settled'];
+        }
+        return $rows;
+    }
+
+    /** Totais em aberto: quantos pneus devemos e quantos nos devem. @return array{owe:int,owed:int,late:int} */
+    public static function totals(): array
+    {
+        $r = Database::one(
+            "SELECT
+               COALESCE(SUM(CASE WHEN direction='in' THEN quantity - COALESCE((SELECT SUM(quantity) FROM loan_settlements s WHERE s.loan_id = l.id),0) END),0) owe,
+               COALESCE(SUM(CASE WHEN direction='out' THEN quantity - COALESCE((SELECT SUM(quantity) FROM loan_settlements s WHERE s.loan_id = l.id),0) END),0) owed,
+               COALESCE(SUM(due_date < CURDATE()),0) late
+             FROM loans l WHERE status = 'aberto'"
+        );
+        return ['owe' => (int) $r['owe'], 'owed' => (int) $r['owed'], 'late' => (int) $r['late']];
+    }
+
+    private static function stock(int $pid, int $delta, string $reason): void
+    {
+        Database::run('UPDATE products SET stock = stock + ? WHERE id = ?', [$delta, $pid]);
+        Database::insert('INSERT INTO stock_movements (product_id, type, quantity, reason) VALUES (?,?,?,?)', [$pid, 'adjust', $delta, mb_substr($reason, 0, 200)]);
+    }
+
+    private static function date(mixed $v): ?string
+    {
+        $v = trim((string) $v);
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) ? $v : null;
+    }
+
+    private static function uuid(): string
+    {
+        $b = random_bytes(16);
+        $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
+        $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
+    }
+}

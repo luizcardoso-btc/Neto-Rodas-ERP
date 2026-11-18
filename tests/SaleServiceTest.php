@@ -192,12 +192,32 @@ final class SaleServiceTest extends TestCase
         SaleService::assertPdvCustomer(['first_name' => 'ANA', 'email' => 'ANA@X.COM']);
     }
 
-    public function testPdvCustomerZipIsOptionalButValidatedWhenFilled(): void
+    public function testPdvCustomerZipIsNeverRequired(): void
     {
         SaleService::assertPdvCustomer(['first_name' => 'ANA', 'tax_id' => '12345678909', 'phone' => '75999991111', 'car' => 'POLO']);
-        $this->expectException(DomainException::class);
-        $this->expectExceptionMessageMatches('/CEP/');
         SaleService::assertPdvCustomer(['first_name' => 'ANA', 'tax_id' => '12345678909', 'phone' => '75999991111', 'zip' => '123', 'car' => 'POLO']);
+        $this->assertNotContains('zip', array_keys(SaleService::ADDRESS_FIELDS));
+    }
+
+    public function testDeleteSaleRestoresStockAndRemovesReceivables(): void
+    {
+        $r = SaleService::create($this->sale(['payments' => [['method' => 'pix', 'amount' => 100.0], ['method' => 'prazo', 'amount' => 500.0]]]));
+        $this->assertSame(8, (int) Database::value('SELECT stock FROM products WHERE id = ?', [$this->pid]));
+        SaleService::delete($r['id'], ['id' => 1, 'username' => 'admin']);
+        $this->assertSame(10, (int) Database::value('SELECT stock FROM products WHERE id = ?', [$this->pid]));
+        $this->assertNull(Database::value('SELECT id FROM sales WHERE id = ?', [$r['id']]));
+        $this->assertSame(0, (int) Database::value('SELECT COUNT(*) FROM accounts_receivable'));
+        $this->assertSame(0, (int) Database::value('SELECT COUNT(*) FROM sale_items'));
+        $this->assertStringContainsString('APAGADA', (string) Database::value('SELECT summary FROM sale_audit WHERE sale_id = ?', [$r['id']]));
+    }
+
+    public function testDeleteSaleUndoesTradeIn(): void
+    {
+        $r = SaleService::create($this->sale(['payments' => [['method' => 'pix', 'amount' => 500.0], ['method' => 'troca', 'amount' => 100.0, 'note' => '175/70 R14', 'trade_qty' => 1]]]));
+        $used = (int) Database::value("SELECT product_id FROM sale_payments WHERE sale_id = ? AND method = 'troca'", [$r['id']]);
+        $this->assertSame(1, (int) Database::value('SELECT stock FROM products WHERE id = ?', [$used]));
+        SaleService::delete($r['id']);
+        $this->assertSame(0, (int) Database::value('SELECT stock FROM products WHERE id = ?', [$used]));
     }
 
     public function testPdvCustomerCompleteIsAccepted(): void

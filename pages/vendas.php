@@ -9,6 +9,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
     redirect(url('vendas', ['id' => $id]));
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_sale') {
+    $id = (int) $_POST['id'];
+    $back = str_starts_with((string) ($_POST['back'] ?? ''), 'index.php?') ? (string) $_POST['back'] : url('vendas');
+    if (!App\Auth::isAdmin()) {
+        flash('err', 'Somente o administrador pode apagar vendas.');
+    } else {
+        try {
+            App\SaleService::delete($id, App\Auth::user());
+            flash('ok', "Venda #$id apagada. Os itens voltaram ao estoque e as contas a receber dela foram removidas.");
+        } catch (DomainException $ex) {
+            flash('err', $ex->getMessage());
+        }
+    }
+    redirect($back);
+}
+
 if (!empty($_GET['edit'])) {
     require __DIR__ . '/venda_editar.php';
     return;
@@ -34,7 +50,7 @@ if (!empty($_GET['id'])) {
     <?php if ($sale['payment_status'] === 'pending'): ?>
       <form method="post" style="margin-top:14px"><?= App\Csrf::field() ?><input type="hidden" name="action" value="mark_paid"><input type="hidden" name="id" value="<?= (int) $sale['id'] ?>"><button class="btn green" type="submit">Marcar como paga</button></form>
     <?php endif; ?>
-    <p style="margin-top:14px"><?php if (App\Auth::isAdmin()): ?><a class="btn" href="<?= e(url('vendas', ['edit' => $sale['id']])) ?>">Editar venda</a> <?php endif; ?><a href="<?= e(url('vendas')) ?>">Voltar para vendas</a></p></div>
+    <p style="margin-top:14px"><?php if (App\Auth::isAdmin()): ?><a class="btn" href="<?= e(url('vendas', ['edit' => $sale['id']])) ?>">Editar venda / forma de pagamento</a> <form method="post" action="index.php?page=vendas" style="display:inline" onsubmit="return confirm('Apagar a venda #<?= (int) $sale['id'] ?>? Os itens voltam ao estoque. Isso nao pode ser desfeito.')"><?= App\Csrf::field() ?><input type="hidden" name="action" value="delete_sale"><input type="hidden" name="id" value="<?= (int) $sale['id'] ?>"><input type="hidden" name="back" value="<?= e(url('vendas')) ?>"><button class="btn danger" type="submit">Apagar venda</button></form> <?php endif; ?><a href="<?= e(url('vendas')) ?>">Voltar para vendas</a></p></div>
 </div>
         <?php
         return;
@@ -86,7 +102,7 @@ $qs = ['from' => $from, 'to' => $to, 'seller' => $sellerId ?: '', 'status' => $s
   <?php foreach ($rows as $r): ?>
     <tr><td>#<?= (int) $r['id'] ?><?= $r['sale_type'] === 'atacado' ? ' <span class="tag atac">atacado</span>' : '' ?></td><td><?= e(fmt_date($r['created_at'], true)) ?></td><td><?= e($r['customer'] ?: '-') ?></td><td><?= e($r['seller'] ?: '-') ?></td>
       <td><?= e($r['methods']) ?> <span class="tag <?= $r['payment_status'] === 'paid' ? 'green' : 'warn' ?>"><?= $r['payment_status'] === 'paid' ? 'pago' : 'pendente' ?></span></td>
-      <td class="num"><b><?= money($r['total']) ?></b></td><td class="actions"><a class="btn ghost sm" href="<?= e(url('vendas', ['id' => $r['id']])) ?>">Detalhes</a><?php if (App\Auth::isAdmin()): ?><a class="btn ghost sm" href="<?= e(url('vendas', ['edit' => $r['id']])) ?>">Editar</a><?php endif; ?></td></tr>
+      <td class="num"><b><?= money($r['total']) ?></b></td><td class="actions"><a class="btn ghost sm" href="<?= e(url('vendas', ['id' => $r['id']])) ?>">Detalhes</a><?php if (App\Auth::isAdmin()): ?><a class="btn ghost sm" href="<?= e(url('vendas', ['edit' => $r['id']])) ?>">Editar</a><form method="post" action="index.php?page=vendas" style="display:inline" onsubmit="return confirm('Apagar a venda #<?= (int) $r['id'] ?>? Os itens voltam ao estoque. Isso nao pode ser desfeito.')"><?= App\Csrf::field() ?><input type="hidden" name="action" value="delete_sale"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><input type="hidden" name="back" value="<?= e(url('vendas')) ?>"><button class="btn danger sm" type="submit">Apagar</button></form><?php endif; ?></td></tr>
   <?php endforeach; ?>
   <?php if (!$rows): ?><tr><td colspan="7" class="muted">Nenhuma venda neste filtro.</td></tr><?php endif; ?></tbody></table></div>
   <?php $pages = (int) ceil($sum['n'] / $per); if ($pages > 1): ?>

@@ -15,7 +15,8 @@ final class SaleService
     public const METHODS = ['dinheiro', 'pix', 'cartao', 'prazo', 'troca'];
     public const ITEM_CATEGORIES = ['pneu' => 'Pneus', 'roda' => 'Roda', 'parafuso' => 'Parafusos', 'servico' => 'Servicos'];
     public const TRADE_CATEGORIES = ['pneu' => 'Pneu usado', 'roda' => 'Roda usada'];
-    public const ADDRESS_FIELDS = ['street' => 'logradouro', 'number' => 'numero', 'district' => 'bairro', 'city' => 'cidade', 'state' => 'UF', 'zip' => 'CEP'];
+    // CEP nao e obrigatorio nem com NF-e (pedido da loja); se vier, e salvo.
+    public const ADDRESS_FIELDS = ['street' => 'logradouro', 'number' => 'numero', 'district' => 'bairro', 'city' => 'cidade', 'state' => 'UF'];
 
     /**
      * @param array{
@@ -327,6 +328,49 @@ final class SaleService
     }
 
     /**
+     * Apaga a venda (admin): devolve os itens ao estoque, tira do estoque o usado que entrou na troca,
+     * remove contas a receber e lancamentos do credor. Fica registrado na auditoria com a copia da venda.
+     */
+    public static function delete(int $saleId, ?array $user = null): void
+    {
+        $pdo = Database::pdo();
+        $pdo->beginTransaction();
+        try {
+            $sale = Database::one('SELECT * FROM sales WHERE id = ? FOR UPDATE', [$saleId]);
+            if (!$sale) {
+                throw new DomainException('Venda nao encontrada.');
+            }
+            $items = Database::all('SELECT * FROM sale_items WHERE sale_id = ?', [$saleId]);
+            $pays = Database::all('SELECT * FROM sale_payments WHERE sale_id = ?', [$saleId]);
+            foreach ($pays as $p) {
+                if ($p['method'] === 'troca' && $p['product_id']) {
+                    self::moveStock((int) $p['product_id'], -(int) $p['trade_qty'], "Venda #$saleId apagada (troca desfeita)", $saleId, true);
+                }
+            }
+            foreach ($items as $i) {
+                if ($i['product_id']) {
+                    self::moveStock((int) $i['product_id'], (int) $i['quantity'], "Venda #$saleId apagada (volta ao estoque)", $saleId);
+                }
+            }
+            Loans::onSaleDeleted($saleId);
+            Database::run('DELETE FROM accounts_receivable WHERE sale_id = ?', [$saleId]);
+            Database::run('UPDATE quotes SET sale_id = NULL WHERE sale_id = ?', [$saleId]);
+            Database::insert(
+                'INSERT INTO sale_audit (sale_id, user_id, username, summary, snapshot) VALUES (?,?,?,?,?)',
+                [$saleId, $user['id'] ?? null, $user['username'] ?? null, sprintf('Venda APAGADA (total %s)', money((float) $sale['total'])),
+                    json_encode(['sale' => $sale, 'items' => $items, 'payments' => $pays], JSON_UNESCAPED_UNICODE)]
+            );
+            Database::run('DELETE FROM sales WHERE id = ?', [$saleId]); // itens, pagamentos e credor caem juntos (cascade)
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
      * Pagamentos marcados "enviado ao credor" viram UM lancamento no extrato do credor (origem: venda).
      * O faturamento da venda nao muda; refazer a partir dos pagamentos evita duplicidade em edicoes.
      */
@@ -376,10 +420,6 @@ final class SaleService
         }
         if (!in_array(strlen(digits($c['phone'] ?? '')), [10, 11], true)) {
             $missing[] = 'TELEFONE (com DDD)';
-        }
-        $zipDigits = digits($c['zip'] ?? '');
-        if ($zipDigits !== '' && strlen($zipDigits) !== 8) {
-            $missing[] = 'CEP (8 numeros; pode deixar em branco)';
         }
         if (trim((string) ($c['car'] ?? '')) === '') {
             $missing[] = 'CARRO';
