@@ -351,3 +351,4 @@ td.actions{white-space:normal;min-width:150px}
 .bad{color:#dc2626}
 @media(max-width:900px){.loan-cols{grid-template-columns:minmax(0,1fr)}}
 .chk[hidden],.row[hidden]{display:none!important}
+.linklike{display:inline!important;width:auto!important;min-height:0!important;margin:0!important;vertical-align:baseline}
