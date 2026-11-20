@@ -456,3 +456,28 @@ td.actions{white-space:normal;min-width:150px}
 .pv-cor input[type=color]{width:28px;height:28px;border:0;padding:0;background:none;cursor:pointer}
 .pv-cor{position:relative}
 .pv-cor em{position:absolute;top:3px;right:3px;font-style:normal;font-size:9px;font-weight:700;background:#ffd21a;color:#111;border-radius:6px;padding:0 4px;line-height:14px}
+/* menu lateral recolhivel */
+.nav-hide{background:transparent;border:1px solid #2a2a2a;color:#94a3b8;border-radius:10px;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer;margin:6px 0 10px;align-self:flex-start}
+.nav-hide:hover{color:#fff;border-color:#475569}
+.nav-show{display:none;position:fixed;top:14px;left:14px;z-index:50;width:42px;height:42px;border-radius:12px;border:0;background:#0a0a0a;color:#ffd21a;font-size:20px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+html.nav-off .shell{grid-template-columns:minmax(0,1fr)}
+html.nav-off .side{display:none}
+html.nav-off .nav-show{display:block}
+html.nav-off .main{padding-left:72px}
+@media(max-width:900px){.nav-hide,.nav-show{display:none!important}html.nav-off .side{display:flex}html.nav-off .main{padding-left:revert}}
+/* provador: modo TV (tela cheia, sem menu) */
+.pv-stage.pv-tv{position:fixed;inset:0;z-index:1000;height:100vh;height:100dvh;min-height:0;border-radius:0}
+.pv-stage.pv-tv .pv-tools{display:none}
+.pv-stage.pv-tv #pv-c{cursor:grab}
+.pv-stage.pv-tv.idle{cursor:none}
+.pv-stage.pv-tv.idle .pv-tvbar{opacity:0;transform:translate(-50%,20px);pointer-events:none}
+.pv-tvbar{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:calc(100% - 24px);background:rgba(8,8,7,.82);border:1px solid rgba(255,210,26,.35);border-radius:18px;padding:8px;backdrop-filter:blur(6px);transition:opacity .4s,transform .4s}
+.pv-tvbar .grp{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.05);border-radius:12px;padding:3px}
+.pv-tvbar span{display:grid;min-width:80px;max-width:190px;text-align:center;padding:0 4px}
+.pv-tvbar small{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#ffd21a}
+.pv-tvbar b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+.pv-tvbar button{width:36px;height:36px;border-radius:10px;border:0;background:rgba(255,255,255,.08);color:#fff;font-size:20px;cursor:pointer;line-height:1}
+.pv-tvbar button:hover{background:#ffd21a;color:#111}
+.pv-tvbar button.sair{width:auto;padding:0 14px;font-size:13px;font-weight:700}
+html.tv-on body{overflow:hidden}
+.pv-tools .chip.tv{border-color:#ffd21a;color:#ffd21a}

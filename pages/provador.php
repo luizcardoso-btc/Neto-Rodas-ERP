@@ -195,6 +195,14 @@ foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1
       <?php if ($isAdmin): ?><button class="chip" type="button" id="pv-ajustar">Ajustar rodas</button>
       <button class="chip" type="button" id="pv-salvar-rodas" hidden>Salvar posição das rodas</button><?php endif; ?>
       <button class="chip" type="button" id="pv-save">Gerar imagem</button>
+      <button class="chip tv" type="button" id="pv-tv" title="Tela cheia para espelhar na TV">&#9974; Modo TV</button>
+    </div>
+    <div class="pv-tvbar" id="pv-tvbar" hidden>
+      <div class="grp"><button type="button" data-tv="car-" aria-label="Carro anterior">&#8249;</button><span><small>Carro</small><b id="tv-car">-</b></span><button type="button" data-tv="car+" aria-label="Próximo carro">&#8250;</button></div>
+      <div class="grp"><button type="button" data-tv="roda-" aria-label="Roda anterior">&#8249;</button><span><small>Roda</small><b id="tv-roda">-</b></span><button type="button" data-tv="roda+" aria-label="Próxima roda">&#8250;</button></div>
+      <div class="grp"><button type="button" data-tv="aro-" aria-label="Aro menor">&minus;</button><span><small>Aro</small><b id="tv-aro">-</b></span><button type="button" data-tv="aro+" aria-label="Aro maior">+</button></div>
+      <div class="grp"><button type="button" data-tv="cor-" aria-label="Cor anterior">&#8249;</button><span><small>Cor</small><b id="tv-cor">-</b></span><button type="button" data-tv="cor+" aria-label="Próxima cor">&#8250;</button></div>
+      <div class="grp"><button type="button" data-tv="play" id="tv-play" aria-label="Pausar ou tocar">&#10074;&#10074;</button><button type="button" data-tv="sair" class="sair">Sair</button></div>
     </div>
     <div class="pv-info" id="pv-info" hidden></div>
   </div>

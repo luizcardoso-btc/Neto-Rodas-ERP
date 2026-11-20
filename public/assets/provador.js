@@ -449,7 +449,7 @@
 
   function setPlay(on) {
     S.play = on; if (on) { S.t = 2.6; S.adjust = false; const a = $('pv-ajustar'); if (a) a.classList.remove('on'); syncSave(); }
-    $('pv-play').classList.toggle('on', on);
+    $('pv-play').classList.toggle('on', on); tvSync();
   }
 
   /* ---------- painel ---------- */
@@ -466,6 +466,7 @@
   function syncBtns() {
     document.querySelectorAll('#pv-aros button').forEach((b) => b.classList.toggle('on', +b.dataset.v === S.aro));
     document.querySelectorAll('#pv-rodas button').forEach((b) => b.classList.toggle('on', !!S.roda && String(S.roda.id) === b.dataset.v));
+    tvSync();
     const t = tire(S.aro), orig = parseTire(basePneu()).a === t.a;
     $('pv-aro-t').textContent = `Pneu ${t.l}/${t.p} R${t.a}${orig ? ' (original' + (S.car ? ' do ' + S.car.modelo : '') + ')' : ''}: flanco de ${Math.round(t.flanco)} mm, diâmetro total ${Math.round(t.diam)} mm${orig ? '' : ` (${t.diff >= 0 ? '+' : ''}${t.diff.toFixed(1).replace('.', ',')}% do original)`}.`;
   }
@@ -496,7 +497,7 @@
     if (!rimImages.has(r.id)) {
       try { busy('Preparando a roda...'); await prepareRim(r.id, toCanvas(await loadImg(r.img), 900)); } catch (e) { alertMsg('Não consegui abrir a foto dessa roda.'); return; } finally { busy(null); }
     }
-    S.roda = r; if (r.aro && aroRange().includes(+r.aro)) S.aro = +r.aro;
+    S.roda = r; if (r.aro && aroRange().includes(+r.aro)) S.aro = +r.aro; tvSync();
     S.rimCache.clear(); syncBtns(); if (S.play) S.t = 12.8; // mostra a roda de perto
   }
   $('pv-q').oninput = (e) => renderRodas(e.target.value);
@@ -624,34 +625,36 @@
   const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.substr(i, 2), 16));
   const REAL_HEX = { branco: '#f1f2f3', prata: '#b8bcc1', preto: '#18191b', cinza: '#6a6e73', vermelho: '#b3141c', azul: '#1f4fa5', verde: '#2f6b3a', amarelo: '#e8b512', laranja: '#e0651c', bege: '#c9b48f', marrom: '#5b3a26' };
   const norm = (n) => (n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  function colorOptions() {
+    const reais = S.sets ? Object.keys(S.sets).filter((n) => n) : [];
+    const list = reais.length ? reais.map((n) => ({ name: n, hex: REAL_HEX[norm(n)] || '#888', real: true })) : [{ name: 'Original', hex: null, real: true }];
+    CORES.filter(([n]) => !reais.some((r) => norm(r) === norm(n))).forEach(([n, h]) => list.push({ name: n, hex: h, real: false }));
+    return list;
+  }
+  const colorOn = (o) => (o.real ? !S.paint && (!S.sets || !o.hex || S.realColor === o.name) : !!S.paint && S.paint.hex === o.hex);
+  function selectColor(o) {
+    const base = () => S.sets && (S.sets[Object.keys(S.sets).find((n) => /branc/i.test(n))] || S.sets[S.realColor]);
+    if (o.real) { S.paint = null; if (S.sets && o.hex) { S.realColor = o.name; S.frames = S.sets[o.name]; } }
+    else { S.paint = { name: o.name, hex: o.hex }; if (S.sets) S.frames = base(); }
+    renderCores();
+  }
   function renderCores() {
     const box = $('pv-cores'); box.innerHTML = '';
     const reais = S.sets ? Object.keys(S.sets).filter((n) => n) : [];
-    const base = () => S.sets && (S.sets[Object.keys(S.sets).find((n) => /branc/i.test(n))] || S.sets[S.realColor]);
-    const mk = (name, hex, real) => {
-      const on = real ? !S.paint && S.realColor === name : S.paint && S.paint.hex === hex;
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-cor' + (on ? ' on' : '');
-      b.title = real ? name + ' (foto real)' : name + ' (simulação)'; b.setAttribute('aria-label', b.title);
-      b.innerHTML = `<i style="background:${hex}"></i><small>${esc(name)}</small>${real ? '<em>foto</em>' : ''}`;
-      b.onclick = () => {
-        if (real) { S.paint = null; S.realColor = name; S.frames = S.sets[name]; }
-        else { S.paint = { name, hex }; if (S.sets) S.frames = base(); }
-        S.frames.forEach((f) => { f._ck = null; }); renderCores();
-      };
+    colorOptions().forEach((o) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-cor' + (colorOn(o) ? ' on' : '');
+      b.title = o.hex ? o.name + (o.real ? ' (foto real)' : ' (simulação)') : 'Original'; b.setAttribute('aria-label', b.title);
+      b.innerHTML = (o.hex ? `<i style="background:${o.hex}"></i>` : '<i class="orig"></i>') + `<small>${esc(o.name)}</small>${o.real && o.hex ? '<em>foto</em>' : ''}`;
+      b.onclick = () => selectColor(o);
       box.append(b);
-    };
-    if (!reais.length) {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-cor' + (S.paint ? '' : ' on');
-      b.innerHTML = '<i class="orig"></i><small>Original</small>'; b.onclick = () => { S.paint = null; renderCores(); }; box.append(b);
-    }
-    reais.forEach((n) => mk(n, REAL_HEX[norm(n)] || '#888', true));
-    CORES.filter(([n]) => !reais.some((r) => norm(r) === norm(n))).forEach(([n, h]) => mk(n, h, false));
+    });
     const l = document.createElement('label'); l.className = 'pv-cor'; l.title = 'Outra cor (simulação)';
     l.innerHTML = `<input type="color" value="${S.paint ? S.paint.hex : '#7a1f2b'}" aria-label="Outra cor"><small>Outra</small>`;
-    l.querySelector('input').oninput = (e) => { S.paint = { name: 'Personalizada', hex: e.target.value }; if (S.sets) S.frames = base(); renderCores(); };
+    l.querySelector('input').oninput = (e) => selectColor({ name: 'Personalizada', hex: e.target.value, real: false });
     box.append(l);
     const hint = $('pv-cores-t');
     if (hint) hint.textContent = reais.length ? 'Com a etiqueta "foto" é a foto real do carro nessa cor. As outras cores são simulação de pintura.' : 'Simulação de pintura do carro.';
+    tvSync();
   }
   // pinta a lataria: acha a cor da porta (meio do carro), troca so o que parece com ela, mantendo luz e sombra
   function painted(f, hex) {
@@ -687,6 +690,51 @@
     const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(out, 0, 0);
     f._paint[hex] = c; return c;
   }
+
+  /* ---------- modo TV: tela cheia so com a apresentacao, barra que some sozinha ---------- */
+  const stage = $('pv-stage'), bar = $('pv-tvbar');
+  const tvOn = () => stage.classList.contains('pv-tv');
+  function tvSync() {
+    if (!bar || !tvOn()) return;
+    $('tv-car').textContent = S.car ? S.car.marca + ' ' + S.car.modelo : '-';
+    $('tv-roda').textContent = S.roda ? S.roda.nome.replace(/^RODA\s+/i, '') : '-';
+    $('tv-aro').textContent = S.aro;
+    const c = colorOptions().find(colorOn); $('tv-cor').textContent = c ? c.name : (S.paint ? S.paint.name : '-');
+    $('tv-play').innerHTML = S.play ? '&#10074;&#10074;' : '&#9654;';
+  }
+  let idleT = null;
+  function wake() { stage.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => { if (tvOn()) stage.classList.add('idle'); }, 3000); }
+  function tv(on) {
+    stage.classList.toggle('pv-tv', on); document.documentElement.classList.toggle('tv-on', on); bar.hidden = !on;
+    if (on) {
+      const el = document.documentElement;
+      if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+      wake(); tvSync(); if (!S.play) setPlay(true);
+    } else {
+      stage.classList.remove('idle');
+      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    }
+  }
+  const carsComFoto = () => CARS.filter((c) => carFotos(c).length).sort((a, b) => (a.marca + a.modelo).localeCompare(b.marca + b.modelo));
+  function tvAction(a) {
+    const step = (list, cur, d) => list[((cur < 0 ? 0 : cur + d) % list.length + list.length) % list.length];
+    if (a === 'car+' || a === 'car-') { const l = carsComFoto(); if (l.length) loadCar(step(l, l.indexOf(S.car), a === 'car+' ? 1 : -1)); }
+    if (a === 'roda+' || a === 'roda-') { if (RODAS.length) pickRoda(step(RODAS, RODAS.indexOf(S.roda), a === 'roda+' ? 1 : -1)); }
+    if (a === 'aro+' || a === 'aro-') { const l = aroRange(), i = l.indexOf(S.aro), n = l[Math.max(0, Math.min(l.length - 1, i + (a === 'aro+' ? 1 : -1)))]; S.aro = n; S.rimCache.clear(); syncBtns(); }
+    if (a === 'cor+' || a === 'cor-') { const l = colorOptions(); selectColor(step(l, l.findIndex(colorOn), a === 'cor+' ? 1 : -1)); }
+    if (a === 'play') setPlay(!S.play);
+    if (a === 'sair') tv(false);
+    tvSync();
+  }
+  $('pv-tv').onclick = () => tv(true);
+  bar.addEventListener('click', (e) => { const b = e.target.closest('button[data-tv]'); if (b) { tvAction(b.dataset.tv); wake(); } });
+  stage.addEventListener('pointermove', () => { if (tvOn()) wake(); });
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && tvOn()) tv(false); });
+  document.addEventListener('keydown', (e) => {
+    if (!tvOn() || e.target.closest('input,select,textarea')) return;
+    const k = { ArrowRight: 'roda+', ArrowLeft: 'roda-', ArrowDown: 'car+', ArrowUp: 'car-', '+': 'aro+', '=': 'aro+', '-': 'aro-', c: 'cor+', C: 'cor-', ' ': 'play', Escape: 'sair' }[e.key];
+    if (k) { e.preventDefault(); tvAction(k); wake(); }
+  });
 
   renderCars(); renderAros(); adminCar(); renderCores(); renderRodas('');
   const first = RODAS.find((r) => r.catalogo) || RODAS[0];
