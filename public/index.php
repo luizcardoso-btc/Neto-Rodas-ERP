@@ -10,7 +10,7 @@ use App\Env;
 
 const PAGES = [
     'dashboard' => 'Dashboard', 'estoque' => 'Estoque', 'pdv' => 'PDV', 'pdv_mobile' => 'PDV Mobile', 'orcamento' => 'Orçamento',
-    'vendas' => 'Vendas', 'emprestimos' => 'Empréstimos', 'crm' => 'CRM', 'financeiro' => 'Financeiro', 'vendedores' => 'Vendedores', 'senha' => 'Minha senha', 'zerar' => 'Zerar vendas',
+    'vendas' => 'Vendas', 'emprestimos' => 'Empréstimos', 'provador' => 'Provador de rodas', 'crm' => 'CRM', 'financeiro' => 'Financeiro', 'vendedores' => 'Vendedores', 'senha' => 'Minha senha', 'zerar' => 'Zerar vendas',
 ];
 
 Auth::start();

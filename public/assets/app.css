@@ -368,3 +368,56 @@ td.actions{white-space:normal;min-width:150px}
 .loan-edit summary{list-style:none;display:inline-block}
 .loan-edit summary::-webkit-details-marker{display:none}
 .loan-edit[open]{border-top:1px dashed var(--line,#e5e7eb);padding-top:8px}
+/* Provador de rodas */
+.pv{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.pv-stage{position:relative;height:min(72vh,680px);min-height:420px;border-radius:20px;overflow:hidden;background:#0b0b0a;color:#f4f2ea}
+#pv-c{display:block;width:100%;height:100%;touch-action:none}
+#pv-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+.pv-guide{position:absolute;inset:0;pointer-events:none;display:grid;place-items:center}
+.pv-frame{width:82%;aspect-ratio:2.4/1;border:3px dashed rgba(255,210,26,.85);border-radius:40% 40% 12% 12%/60% 60% 14% 14%}
+.pv-guide p{position:absolute;top:14px;left:50%;transform:translateX(-50%);margin:0;background:rgba(0,0,0,.65);color:#fff;padding:8px 14px;border-radius:999px;font-weight:600;font-size:14px;text-align:center;width:max-content;max-width:92%}
+.pv-shoot{position:absolute;left:0;right:0;bottom:18px;display:flex;justify-content:center;align-items:center;gap:24px}
+.pv-shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:#ffd21a;cursor:pointer;box-shadow:0 0 0 4px rgba(0,0,0,.35)}
+.pv-shutter:active{transform:scale(.94)}
+.pv-flash{animation:pvf .16s}
+@keyframes pvf{from{filter:brightness(2.5)}to{filter:none}}
+.pv-busy{position:absolute;inset:0;display:grid;place-content:center;gap:12px;background:rgba(8,8,7,.72);text-align:center;font-weight:600}
+.pv-spin{width:46px;height:46px;margin:auto;border-radius:50%;border:4px solid rgba(255,255,255,.2);border-top-color:#ffd21a;animation:pvs 1s linear infinite}
+@keyframes pvs{to{transform:rotate(360deg)}}
+.pv-empty{position:absolute;inset:0;display:grid;place-content:center;gap:14px;text-align:center;padding:24px;max-width:560px;margin:auto}
+.pv-empty h2{font-size:clamp(22px,3vw,32px);margin:0;color:#fff}
+.pv-empty p{margin:0;color:#c9c6ba}
+.pv-empty label{color:#ffd21a}
+.pv-row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.pv-tools{position:absolute;left:0;right:0;bottom:14px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:0 12px}
+.pv-tools .chip{background:rgba(20,20,18,.85);color:#f4f2ea;border:1px solid #3a3a34;border-radius:999px;padding:9px 13px;font-weight:600;cursor:pointer}
+.pv-tools .chip.on{background:#ffd21a;color:#15130a;border-color:#ffd21a}
+.pv-info{position:absolute;left:14px;top:14px;background:rgba(12,12,11,.78);border:1px solid #2e2e29;color:#f4f2ea;border-radius:12px;padding:8px 12px;font-size:13px;max-width:calc(100% - 28px)}
+.pv-info b{color:#ffd21a}
+.pv-side{display:grid;gap:12px}
+.pv-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.pv-opts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:10px}
+.pv-opts.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.pv-opt{border:1px solid var(--line,#e5e7eb);background:transparent;border-radius:10px;padding:9px 4px;font:inherit;font-weight:700;cursor:pointer;color:inherit}
+.pv-opt small{display:block;font-size:11px;font-weight:500;opacity:.7}
+.pv-opt.on{background:#ffd21a;border-color:#ffd21a;color:#15130a}
+.pv-rodas{display:grid;gap:6px;max-height:300px;overflow:auto;margin-top:8px}
+.pv-roda{display:flex;gap:10px;align-items:center;text-align:left;border:1px solid var(--line,#e5e7eb);background:transparent;border-radius:12px;padding:6px;cursor:pointer;font:inherit;color:inherit}
+.pv-roda img{width:52px;height:52px;object-fit:cover;border-radius:50%;flex:none;background:#111}
+.pv-roda small{display:block;opacity:.7;font-size:12px}
+.pv-roda.on{border-color:#f5b800;background:#fff8d6}
+.pv-ab{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.pv-ab button{border:2px solid var(--line,#e5e7eb);background:transparent;border-radius:12px;padding:8px;text-align:left;cursor:pointer;font:inherit;color:inherit;display:grid}
+.pv-ab button b{font-size:20px}
+.pv-ab button span{font-size:12px;opacity:.75}
+.pv-ab button.on{border-color:#f5b800;background:#fff8d6}
+.pv-frames{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}
+.pv-fr{border:1px solid var(--line,#e5e7eb);background:#111;color:#eee;border-radius:10px;padding:4px;cursor:pointer;display:grid;gap:2px;font:inherit;font-size:11px;text-align:left}
+.pv-fr canvas{width:100%;height:auto}
+.pv-fr.on{border-color:#ffd21a}
+.pv-chk{display:flex;gap:4px;align-items:center;font-size:11px;color:#bbb}
+.pv-modal{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.82);display:grid;place-items:center;padding:16px}
+.pv-modal[hidden],.pv [hidden]{display:none!important}
+.pv-box{background:#fff;border-radius:16px;padding:14px;display:grid;gap:10px;max-width:min(980px,100%);max-height:100%;overflow:auto}
+.pv-box img{max-width:100%;max-height:70vh;width:auto;margin:0 auto;display:block;border-radius:10px}
+@media(max-width:980px){.pv{grid-template-columns:minmax(0,1fr)}.pv-stage{height:62vh;min-height:360px}}
