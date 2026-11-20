@@ -126,6 +126,13 @@ $rodasJs = array_map(fn ($r) => [
     'id' => (int) $r['id'], 'nome' => $r['name'], 'marca' => (string) $r['brand'], 'aro' => (int) digits((string) $r['rim']) ?: null,
     'preco' => (float) $r['price'], 'estoque' => (int) $r['stock'], 'cond' => $r['condition_type'], 'img' => $r['image_path'],
 ], $rodas);
+// rodas do catalogo: fotos ja limpas que ficam no proprio sistema (public/rodas), aparecem primeiro na busca
+foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1 ORDER BY rim, name')) as $c) {
+    array_unshift($rodasJs, [
+        'id' => 'c' . $c['id'], 'nome' => $c['name'], 'marca' => (string) $c['brand'], 'aro' => (int) $c['rim'],
+        'preco' => null, 'estoque' => null, 'cond' => 'novo', 'img' => $c['path'], 'catalogo' => true,
+    ]);
+}
 ?>
 <section class="hero slim"><div><h1>Provador de rodas</h1><p>Escolha o carro do cliente na biblioteca (ou fotografe o carro dele) e mostre na plataforma 360° como fica com as nossas rodas.</p></div></section>
 

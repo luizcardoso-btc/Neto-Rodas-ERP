@@ -180,9 +180,9 @@
   const rimImages = new Map();
   async function prepareRim(id, src) {
     try {
-      busy('Recortando a roda...');
-      const r = await cutout(src);
-      const c = r.canvas, side = Math.max(c.width, c.height), sq = document.createElement('canvas');
+      busy('Preparando a roda...');
+      // foto ja limpa (com transparencia): usa direto. Foto comum: remove o fundo
+      const c = trimAlpha(src) || (await cutout(src)).canvas, side = Math.max(c.width, c.height), sq = document.createElement('canvas');
       sq.width = sq.height = side;
       sq.getContext('2d').drawImage(c, (side - c.width) / 2, (side - c.height) / 2);
       rimImages.set(id, sq); S.rimCache.clear();
@@ -428,7 +428,7 @@
     $('pv-a-t').textContent = rodaLabel(S.A); $('pv-b-t').textContent = rodaLabel(S.B);
     document.querySelectorAll('#pv-aros button').forEach((b) => b.classList.toggle('on', +b.dataset.v === cfg().aro));
     document.querySelectorAll('#pv-sys button').forEach((b) => b.classList.toggle('on', cfg().roda.tipo === 'sis' && cfg().roda.id === b.dataset.v));
-    document.querySelectorAll('#pv-rodas button').forEach((b) => b.classList.toggle('on', cfg().roda.tipo === 'loja' && cfg().roda.id === +b.dataset.v));
+    document.querySelectorAll('#pv-rodas button').forEach((b) => b.classList.toggle('on', cfg().roda.tipo === 'loja' && String(cfg().roda.id) === b.dataset.v));
     const t = tire(cfg().aro);
     const orig = parseTire(basePneu()).a === t.a;
     $('pv-aro-t').textContent = `Pneu ${t.l}/${t.p} R${t.a}${orig ? ' (original' + (S.car ? ' do ' + S.car.modelo : '') + ')' : ''}: flanco de ${Math.round(t.flanco)} mm, diâmetro total ${Math.round(t.diam)} mm${orig ? '' : ` (${t.diff >= 0 ? '+' : ''}${t.diff.toFixed(1).replace('.', ',')}% do original)`}. Quanto maior o aro, mais roda e menos borracha aparecem.`;
@@ -455,7 +455,7 @@
     if (!list.length) { box.innerHTML = '<p class="small muted">Nenhuma roda com foto no estoque. Cadastre a foto da roda em Estoque.</p>'; return; }
     list.forEach((r) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-roda'; b.dataset.v = r.id;
-      b.innerHTML = `<img src="${r.img}" alt="" loading="lazy"><span><b>${esc(r.nome)}</b><small>${r.aro ? 'Aro ' + r.aro + ' · ' : ''}${r.estoque} em estoque · ${fmtMoney(r.preco)}</small></span>`;
+      b.innerHTML = `<img src="${r.img}" alt="" loading="lazy"><span><b>${esc(r.nome)}</b><small>${r.aro ? 'Aro ' + r.aro + ' · ' : ''}${r.estoque == null ? 'catálogo' : r.estoque + ' em estoque · ' + fmtMoney(r.preco)}</small></span>`;
       b.onclick = async () => {
         if (!rimImages.has(r.id)) { try { await prepareRim(r.id, toCanvas(await loadImg(r.img), 900)); } catch (e) { alertMsg('Não consegui abrir a foto dessa roda.'); return; } }
         cfg().roda = { tipo: 'loja', id: r.id }; if (r.aro && aroRange().includes(+r.aro)) cfg().aro = +r.aro; syncBtns();
