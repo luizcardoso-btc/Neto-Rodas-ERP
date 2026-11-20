@@ -454,3 +454,5 @@ td.actions{white-space:normal;min-width:150px}
 .pv-cor small{font-size:11px;line-height:1.1;text-align:center}
 .pv-cor.on{border-color:#f5b800;background:#fff8d6}
 .pv-cor input[type=color]{width:28px;height:28px;border:0;padding:0;background:none;cursor:pointer}
+.pv-cor{position:relative}
+.pv-cor em{position:absolute;top:3px;right:3px;font-style:normal;font-size:9px;font-weight:700;background:#ffd21a;color:#111;border-radius:6px;padding:0 4px;line-height:14px}

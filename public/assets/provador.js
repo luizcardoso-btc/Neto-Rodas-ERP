@@ -532,7 +532,7 @@
   }
   $('pv-cq').oninput = renderCars;
   async function loadCar(c) {
-    S.car = c; S.paint = null; S.adjust = false; renderCars(); renderAros(); adminCar(); renderCores();
+    S.car = c; S.paint = null; S.sets = null; S.realColor = null; S.adjust = false; renderCars(); renderAros(); adminCar(); renderCores();
     const fotos = carFotos(c);
     if (!fotos.length) {
       S.frames = []; $('pv-tools').hidden = true; $('pv-empty').hidden = false;
@@ -548,10 +548,14 @@
         const cnv = trimAlpha(img) || (await cutout(toCanvas(img, 1600))).canvas;
         const W = cnv.width, H = cnv.height, sv = ft.rodas;
         const wheels = sv && sv.list && sv.list.length ? sv.list.map((w) => ({ x: w.x * W, y: w.y * H, r: w.r * W, sq: w.sq || 1 })) : findWheels(cnv);
-        frames.push({ canvas: cnv, label: ft.angulo, wheels, wheelsOn: sv ? !!sv.on : /Lateral|3\/4/.test(ft.angulo), imgId: ft.id, carId: c.id });
+        frames.push({ canvas: cnv, label: ft.angulo, cor: ft.cor || '', wheels, wheelsOn: sv ? !!sv.on : /Lateral|3\/4/.test(ft.angulo), imgId: ft.id, carId: c.id });
       }
       if (S.car !== c) return;
-      S.frames = frames; S.original = false; $('pv-antes').classList.remove('on'); $('pv-antes').textContent = 'Antes';
+      // fotos em cores reais: cada cor vira um conjunto (a branca e a base da simulacao das outras cores)
+      S.sets = {}; frames.forEach((f) => { (S.sets[f.cor] = S.sets[f.cor] || []).push(f); });
+      const nomes = Object.keys(S.sets);
+      S.realColor = nomes.find((n) => /branc/i.test(n)) || nomes[0];
+      S.frames = S.sets[S.realColor]; S.original = false; renderCores(); $('pv-antes').classList.remove('on'); $('pv-antes').textContent = 'Antes';
       $('pv-empty').hidden = true; $('pv-tools').hidden = false; S.t = 0; setPlay(true); S.t = 0; syncSave();
     } catch (e) {
       console.error(e); alertMsg('Não consegui abrir a foto desse carro (' + (e && e.message ? e.message : e) + ').', 9000);
@@ -618,20 +622,36 @@
   /* ---------- cor do carro: simulacao de pintura ---------- */
   const CORES = [['Branco', '#f1f2f3'], ['Prata', '#b8bcc1'], ['Cinza', '#6a6e73'], ['Preto', '#18191b'], ['Vermelho', '#b3141c'], ['Azul', '#1f4fa5'], ['Azul claro', '#5aa0d8'], ['Verde', '#2f6b3a'], ['Amarelo', '#e8b512'], ['Laranja', '#e0651c'], ['Bege', '#c9b48f'], ['Marrom', '#5b3a26']];
   const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.substr(i, 2), 16));
+  const REAL_HEX = { branco: '#f1f2f3', prata: '#b8bcc1', preto: '#18191b', cinza: '#6a6e73', vermelho: '#b3141c', azul: '#1f4fa5', verde: '#2f6b3a', amarelo: '#e8b512', laranja: '#e0651c', bege: '#c9b48f', marrom: '#5b3a26' };
+  const norm = (n) => (n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   function renderCores() {
     const box = $('pv-cores'); box.innerHTML = '';
-    const mk = (name, hex) => {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-cor' + ((S.paint ? S.paint.hex : null) === hex ? ' on' : '');
-      b.title = name; b.setAttribute('aria-label', name);
-      b.innerHTML = hex ? `<i style="background:${hex}"></i><small>${name}</small>` : '<i class="orig"></i><small>Original</small>';
-      b.onclick = () => { S.paint = hex ? { name, hex } : null; renderCores(); };
+    const reais = S.sets ? Object.keys(S.sets).filter((n) => n) : [];
+    const base = () => S.sets && (S.sets[Object.keys(S.sets).find((n) => /branc/i.test(n))] || S.sets[S.realColor]);
+    const mk = (name, hex, real) => {
+      const on = real ? !S.paint && S.realColor === name : S.paint && S.paint.hex === hex;
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-cor' + (on ? ' on' : '');
+      b.title = real ? name + ' (foto real)' : name + ' (simulação)'; b.setAttribute('aria-label', b.title);
+      b.innerHTML = `<i style="background:${hex}"></i><small>${esc(name)}</small>${real ? '<em>foto</em>' : ''}`;
+      b.onclick = () => {
+        if (real) { S.paint = null; S.realColor = name; S.frames = S.sets[name]; }
+        else { S.paint = { name, hex }; if (S.sets) S.frames = base(); }
+        S.frames.forEach((f) => { f._ck = null; }); renderCores();
+      };
       box.append(b);
     };
-    mk('Original', null); CORES.forEach(([n, h]) => mk(n, h));
-    const l = document.createElement('label'); l.className = 'pv-cor'; l.title = 'Outra cor';
+    if (!reais.length) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-cor' + (S.paint ? '' : ' on');
+      b.innerHTML = '<i class="orig"></i><small>Original</small>'; b.onclick = () => { S.paint = null; renderCores(); }; box.append(b);
+    }
+    reais.forEach((n) => mk(n, REAL_HEX[norm(n)] || '#888', true));
+    CORES.filter(([n]) => !reais.some((r) => norm(r) === norm(n))).forEach(([n, h]) => mk(n, h, false));
+    const l = document.createElement('label'); l.className = 'pv-cor'; l.title = 'Outra cor (simulação)';
     l.innerHTML = `<input type="color" value="${S.paint ? S.paint.hex : '#7a1f2b'}" aria-label="Outra cor"><small>Outra</small>`;
-    l.querySelector('input').oninput = (e) => { S.paint = { name: 'Personalizada ' + e.target.value.toUpperCase(), hex: e.target.value }; renderCores(); };
+    l.querySelector('input').oninput = (e) => { S.paint = { name: 'Personalizada', hex: e.target.value }; if (S.sets) S.frames = base(); renderCores(); };
     box.append(l);
+    const hint = $('pv-cores-t');
+    if (hint) hint.textContent = reais.length ? 'Com a etiqueta "foto" é a foto real do carro nessa cor. As outras cores são simulação de pintura.' : 'Simulação de pintura do carro.';
   }
   // pinta a lataria: acha a cor da porta (meio do carro), troca so o que parece com ela, mantendo luz e sombra
   function painted(f, hex) {

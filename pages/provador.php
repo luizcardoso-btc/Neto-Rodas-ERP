@@ -105,7 +105,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_starts_with((string) ($_POST['a
                     $file = 'car-' . $id . '-' . time() . '-' . $i . '.' . $ext;
                     if (move_uploaded_file($files['tmp_name'][$i], $dir . '/' . $file)) {
                         $angle = PV_ANGULOS[($next + $ok) % count(PV_ANGULOS)];
-                        Database::insert('INSERT INTO car_images (car_id, angle, sort, path) VALUES (?,?,?,?)', [$id, $angle, $next + $ok, 'uploads/cars/' . $file]);
+                        $cor = mb_convert_case(trim((string) ($_POST['color'] ?? '')), MB_CASE_TITLE);
+                        Database::insert('INSERT INTO car_images (car_id, angle, color, sort, path) VALUES (?,?,?,?,?)', [$id, $angle, $cor !== '' ? mb_substr($cor, 0, 30) : null, $next + $ok, 'uploads/cars/' . $file]);
                         $ok++;
                     }
                 }
@@ -152,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_starts_with((string) ($_POST['a
 $cars = Database::all('SELECT * FROM car_models WHERE active = 1 ORDER BY brand, model');
 $imgs = [];
 foreach (Database::all('SELECT * FROM car_images ORDER BY car_id, sort, id') as $im) {
-    $imgs[(int) $im['car_id']][] = ['id' => (int) $im['id'], 'angulo' => $im['angle'], 'src' => $im['path'], 'rodas' => $im['wheels'] ? json_decode($im['wheels'], true) : null];
+    $imgs[(int) $im['car_id']][] = ['id' => (int) $im['id'], 'angulo' => $im['angle'], 'cor' => (string) ($im['color'] ?? ''), 'src' => $im['path'], 'rodas' => $im['wheels'] ? json_decode($im['wheels'], true) : null];
 }
 $carsJs = array_map(fn ($c) => [
     'id' => (int) $c['id'], 'marca' => $c['brand'], 'modelo' => $c['model'], 'tipo' => $c['body_type'], 'pneu' => $c['tire'],
@@ -208,6 +209,7 @@ foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1
         <div id="pv-admin-car" hidden>
           <form method="post" enctype="multipart/form-data" class="stack" style="margin-top:10px"><?= App\Csrf::field() ?><input type="hidden" name="action" value="car_img_upload"><input type="hidden" name="id" class="pv-car-id">
             <label class="birth"><span>Adicionar fotos PNG sem fundo de <b class="pv-car-nome"></b> (pode escolher várias, na ordem do giro)</span><input type="file" name="imgs[]" accept="image/png,image/webp,image/jpeg" multiple required></label>
+            <input name="color" placeholder="Cor do carro na foto (ex.: Vermelho)" aria-label="Cor do carro na foto">
             <button class="btn sm" type="submit">Enviar fotos</button>
           </form>
           <div class="pv-admin-imgs" id="pv-admin-imgs"></div>
@@ -242,6 +244,7 @@ foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1
     <div class="card">
       <h2>Cor do carro</h2>
       <div class="pv-cores" id="pv-cores"></div>
+      <p class="small muted" id="pv-cores-t" style="margin:8px 0 0"></p>
     </div>
   </aside>
 </div>
