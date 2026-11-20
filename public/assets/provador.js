@@ -5,10 +5,11 @@
   const cv = $('pv-c'), ctx = cv.getContext('2d');
   const ANGULOS = window.PV_ANGULOS || ['Lateral direita', '3/4 traseira direita', 'Traseira', '3/4 traseira esquerda', 'Lateral esquerda', '3/4 frente esquerda', 'Frente', '3/4 frente direita'];
   const CARS = window.PV_CARS || [];
+  const CLIENT = window.PV_CLIENT_CARS || [];
   const SISTEMA = [['esportiva', 'Esportiva 5 raios'], ['multi', 'Multirraios'], ['duplo', 'Raios duplos'], ['turbina', 'Turbina']];
 
   const S = {
-    frames: [], cur: 0, pos: 0, original: false, adjust: false, spin: false, car: null, ang: 0, last: performance.now(),
+    frames: [], cur: 0, pos: 0, tab: 'modelos', paint: null, original: false, adjust: false, spin: false, car: null, ang: 0, last: performance.now(),
     slot: 'A', A: { aro: 17, roda: { tipo: 'sis', id: 'esportiva' } }, B: { aro: 15, roda: { tipo: 'sis', id: 'multi' } },
     rimCache: new Map(), shoot: null, drag: null, t0: performance.now()
   };
@@ -41,7 +42,37 @@
     session = await ort.InferenceSession.create('models/u2netp.onnx', { executionProviders: ['wasm'] });
     return session;
   }
+  // remove o fundo: primeiro no servidor (funciona em qualquer celular), se falhar tenta no proprio aparelho
   async function cutout(src) {
+    let errSrv = null;
+    try { return await cutoutServer(src); } catch (e) { errSrv = e; console.warn('servidor', e); }
+    try { return await cutoutLocal(src); } catch (e) {
+      throw new Error((errSrv ? errSrv.message + ' / ' : '') + 'no aparelho: ' + (e && e.message ? e.message : e));
+    }
+  }
+  async function cutoutServer(src) {
+    const blob = await new Promise((ok) => src.toBlob(ok, 'image/jpeg', 0.92));
+    if (!blob) throw new Error('não consegui ler a foto');
+    const fd = new FormData(); fd.append('action', 'cutout'); fd.append('foto', blob, 'foto.jpg');
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 60000);
+    let r;
+    try { r = await fetch(location.pathname + location.search, { method: 'POST', body: fd, headers: { 'X-CSRF-TOKEN': window.PV_CSRF || '' }, credentials: 'same-origin', signal: ctl.signal }); } finally { clearTimeout(to); }
+    if (!r.ok || !(r.headers.get('Content-Type') || '').includes('image/png')) {
+      const j = await r.json().catch(() => ({})); throw new Error(j.error || 'servidor respondeu ' + r.status);
+    }
+    const box = (r.headers.get('X-Box') || '').split(',').map(Number);
+    const url = URL.createObjectURL(await r.blob());
+    try {
+      const img = await loadImg(url), c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+      const o = document.createElement('canvas'); o.width = c.width; o.height = c.height;
+      const [x0, y0, x1, y1, W, H] = box.length >= 6 ? box : [0, 0, src.width, src.height, src.width, src.height];
+      const kx = src.width / (W || src.width), ky = src.height / (H || src.height);
+      o.getContext('2d').drawImage(src, x0 * kx, y0 * ky, (x1 - x0) * kx, (y1 - y0) * ky, 0, 0, o.width, o.height);
+      return { canvas: c, orig: o };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  async function cutoutLocal(src) {
     const s = await model();
     const N = 320, t = document.createElement('canvas'); t.width = t.height = N;
     const tc = t.getContext('2d', { willReadFrequently: true }); tc.drawImage(src, 0, 0, N, N);
@@ -251,10 +282,10 @@
   }
   // carro recortado + rodas novas
   function composeCar(f, wheels) {
-    const key = wheels && f.wheelsOn ? JSON.stringify([S.slot, cfg(), f.wheels]) : 'nowheels';
+    const key = (wheels && f.wheelsOn ? JSON.stringify([S.slot, cfg(), f.wheels]) : 'nowheels') + '|' + (S.paint ? S.paint.hex : '');
     if (f._ck === key && f._comp) return f._comp;
     const c = document.createElement('canvas'); c.width = f.canvas.width; c.height = f.canvas.height;
-    const g = c.getContext('2d'); g.drawImage(f.canvas, 0, 0);
+    const g = c.getContext('2d'); g.drawImage(S.paint ? painted(f, S.paint.hex) : f.canvas, 0, 0);
     if (wheels && f.wheelsOn) {
       const sp = wheelSprite(cfg());
       f.wheels.forEach((w) => { g.save(); g.translate(w.x, w.y); g.scale(w.sq, 1); g.drawImage(sp, -w.r * 1.04, -w.r * 1.04, w.r * 2.08, w.r * 2.08); g.restore(); });
@@ -346,16 +377,16 @@
         const side = /Lateral|3\/4/.test(it.label);
         S.frames.push({ canvas: r.canvas, orig: r.orig, label: it.label, wheels: findWheels(r.canvas), wheelsOn: side });
       }
-      S.car = null; renderCars(); renderAros(); adminCar();
+      S.car = null; S.paint = null; renderCars(); renderAros(); adminCar(); clientPanel(); renderCores();
       S.pos = 0; S.cur = 0; S.ang = 0; S.spin = S.frames.length === 1;
       $('pv-empty').hidden = true; $('pv-tools').hidden = false; $('pv-girar').classList.toggle('on', S.spin);
       renderFrames(); syncBtns();
     } catch (e) {
-      console.error(e); alertMsg('Não consegui processar a foto. Tente de novo com boa luz e o carro inteiro no quadro.');
+      console.error(e); alertMsg('Não consegui tirar o fundo da foto (' + (e && e.message ? e.message : e) + '). Tente de novo com boa luz e o carro inteiro no quadro.', 12000);
     } finally { busy(null); }
   }
   function busy(t) { $('pv-busy').hidden = !t; if (t) $('pv-busy-t').textContent = t; }
-  function alertMsg(t) { const i = $('pv-info'); i.hidden = false; i.dataset.msg = '1'; i.textContent = t; clearTimeout(alertMsg.t); alertMsg.t = setTimeout(() => { delete i.dataset.msg; }, 5000); }
+  function alertMsg(t, ms) { const i = $('pv-info'); i.hidden = false; i.dataset.msg = '1'; i.textContent = t; clearTimeout(alertMsg.t); alertMsg.t = setTimeout(() => { delete i.dataset.msg; }, ms || 5000); }
 
   /* ---------- miniaturas dos angulos ---------- */
   function renderFrames() {
@@ -512,19 +543,31 @@
   const carFotos = (c) => c.fotos || [];
   function renderCars() {
     const box = $('pv-cars'), q = ($('pv-cq').value || '').toLowerCase().trim(); box.innerHTML = '';
-    const list = CARS.filter((c) => !q || (c.marca + ' ' + c.modelo + ' ' + c.tipo).toLowerCase().includes(q))
-      .sort((a, b) => (carFotos(b).length > 0) - (carFotos(a).length > 0) || (a.marca + a.modelo).localeCompare(b.marca + b.modelo));
-    if (!list.length) { box.innerHTML = '<p class="small muted">Nenhum carro encontrado.' + (window.PV_ADMIN ? ' Cadastre em "Biblioteca" abaixo.' : '') + '</p>'; return; }
+    $('pv-ccount').textContent = CLIENT.length ? '(' + CLIENT.length + ')' : '';
+    document.querySelectorAll('#pv-cseg button').forEach((b) => b.classList.toggle('on', b.dataset.v === S.tab));
+    $('pv-cq').placeholder = S.tab === 'clientes' ? 'Buscar: nome, placa, telefone, carro...' : 'Buscar: HB20, Gol, Compass, Hilux...';
+    let list;
+    if (S.tab === 'clientes') {
+      const qd = q.replace(/\D/g, '');
+      list = CLIENT.filter((c) => !q || (c.marca + ' ' + c.modelo + ' ' + c.dono + ' ' + c.placa + ' ' + c.cor).toLowerCase().includes(q) || (qd.length >= 4 && (c.fone || '').replace(/\D/g, '').includes(qd)));
+      if (!list.length) { box.innerHTML = '<p class="small muted">' + (CLIENT.length ? 'Nenhum carro de cliente encontrado.' : 'Nenhum carro de cliente salvo ainda. Fotografe o carro do cliente e toque em "Salvar carro".') + '</p>'; return; }
+    } else {
+      list = CARS.filter((c) => !q || (c.marca + ' ' + c.modelo + ' ' + c.tipo).toLowerCase().includes(q))
+        .sort((a, b) => (carFotos(b).length > 0) - (carFotos(a).length > 0) || (a.marca + a.modelo).localeCompare(b.marca + b.modelo));
+      if (!list.length) { box.innerHTML = '<p class="small muted">Nenhum carro encontrado.' + (window.PV_ADMIN ? ' Cadastre em "Biblioteca" abaixo.' : '') + '</p>'; return; }
+    }
     list.slice(0, q ? 80 : 120).forEach((c) => {
       const f = carFotos(c)[0], b = document.createElement('button'); b.type = 'button';
       b.className = 'pv-car' + (S.car && S.car.id === c.id ? ' on' : '') + (f ? '' : ' sem');
-      b.innerHTML = (f ? `<img src="${esc(f.src)}" alt="" loading="lazy">` : '<i>sem foto</i>') + `<span><b>${esc(c.modelo)}</b><small>${esc(c.marca)} · ${esc(c.pneu)}${carFotos(c).length > 1 ? ' · ' + carFotos(c).length + ' ângulos' : ''}</small></span>`;
+      const sub = c.cliente ? [c.dono || 'sem nome', c.placa, c.cor].filter(Boolean).join(' · ') : c.marca + ' · ' + c.pneu + (carFotos(c).length > 1 ? ' · ' + carFotos(c).length + ' ângulos' : '');
+      b.innerHTML = (f ? `<img src="${esc(f.src)}" alt="" loading="lazy">` : '<i>sem foto</i>') + `<span><b>${esc(c.cliente ? c.marca + ' ' + c.modelo : c.modelo)}</b><small>${esc(sub)}</small></span>`;
       b.onclick = () => loadLibraryCar(c);
       box.append(b);
     });
   }
+  document.querySelectorAll('#pv-cseg button').forEach((b) => { b.onclick = () => { S.tab = b.dataset.v; renderCars(); }; });
   async function loadLibraryCar(c) {
-    S.car = c; S.adjust = false; $('pv-ajustar').classList.remove('on'); renderCars(); renderAros(); adminCar();
+    S.car = c; S.paint = null; S.adjust = false; $('pv-ajustar').classList.remove('on'); renderCars(); renderAros(); adminCar(); clientPanel(); renderCores();
     const fotos = carFotos(c);
     if (!fotos.length) {
       S.frames = []; $('pv-tools').hidden = true; $('pv-empty').hidden = false; renderFrames();
@@ -542,7 +585,7 @@
         const W = cnv.width, H = cnv.height, sv = ft.rodas;
         const wheels = sv && sv.list && sv.list.length ? sv.list.map((w) => ({ x: w.x * W, y: w.y * H, r: w.r * W, sq: w.sq || 1 })) : findWheels(cnv);
         const on = sv ? !!sv.on : /Lateral|3\/4/.test(ft.angulo);
-        frames.push({ canvas: cnv, orig: cnv, label: ft.angulo, wheels, wheelsOn: on, imgId: ft.id, carId: c.id });
+        frames.push({ canvas: cnv, orig: cnv, label: ft.angulo, wheels, wheelsOn: on, imgId: ft.id, carId: c.cliente ? c.cid : c.id, kind: c.cliente ? 'cliente' : 'modelo' });
       }
       if (S.car !== c) return; // trocou de carro no meio
       S.frames = frames; S.pos = 0; S.cur = 0; S.ang = 0; S.spin = true; S.original = false;
@@ -558,7 +601,7 @@
   // admin: lista das fotos do carro, com angulo e excluir
   function adminCar() {
     const box = $('pv-admin-car'); if (!box) return;
-    box.hidden = !S.car; if (!S.car) return;
+    box.hidden = !S.car || !!S.car.cliente; if (box.hidden) return;
     const c = S.car;
     box.querySelectorAll('.pv-car-id').forEach((i) => { i.value = c.id; });
     box.querySelector('.pv-car-nome').textContent = c.marca + ' ' + c.modelo;
@@ -578,14 +621,14 @@
   // admin: salva a posicao das rodas da foto da biblioteca (vale para todo mundo)
   function syncSave() {
     const b = $('pv-salvar-rodas'); if (!b) return;
-    b.hidden = !(S.adjust && S.frames.some((f) => f.imgId && f.dirty));
+    b.hidden = !(S.adjust && S.frames.some((f) => f.imgId && f.dirty && (window.PV_ADMIN || f.kind === 'cliente')));
   }
   if ($('pv-salvar-rodas')) $('pv-salvar-rodas').onclick = async (e) => {
     const btn = e.currentTarget; btn.disabled = true;
     try {
-      for (const f of S.frames.filter((x) => x.imgId && x.dirty)) {
+      for (const f of S.frames.filter((x) => x.imgId && x.dirty && (window.PV_ADMIN || x.kind === 'cliente'))) {
         const W = f.canvas.width, H = f.canvas.height;
-        const body = new URLSearchParams({ action: 'car_img_wheels', id: f.carId, img: f.imgId,
+        const body = new URLSearchParams({ action: f.kind === 'cliente' ? 'cust_wheels' : 'car_img_wheels', id: f.carId, img: f.imgId,
           wheels: JSON.stringify({ on: f.wheelsOn, list: f.wheels.map((w) => ({ x: +(w.x / W).toFixed(4), y: +(w.y / H).toFixed(4), r: +(w.r / W).toFixed(4), sq: +w.sq.toFixed(3) })) }) });
         const r = await fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-CSRF-TOKEN': window.PV_CSRF || '' }, credentials: 'same-origin' });
         const j = await r.json().catch(() => ({}));
@@ -599,7 +642,124 @@
     finally { btn.disabled = false; syncSave(); }
   };
 
-  renderRodas(''); renderCars(); renderAros(); adminCar(); requestAnimationFrame(loop);
+  /* ---------- carro do cliente: salvar no banco e mostrar os dados ---------- */
+  const post = async (fd) => {
+    const r = await fetch(location.pathname + location.search, { method: 'POST', body: fd, headers: { 'X-CSRF-TOKEN': window.PV_CSRF || '' }, credentials: 'same-origin' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'erro ' + r.status);
+    return j;
+  };
+  const wheelsJson = (f) => JSON.stringify({ on: f.wheelsOn, list: f.wheels.map((w) => ({ x: +(w.x / f.canvas.width).toFixed(4), y: +(w.y / f.canvas.height).toFixed(4), r: +(w.r / f.canvas.width).toFixed(4), sq: +w.sq.toFixed(3) })) });
+  const toBlob = (c) => new Promise((ok) => c.toBlob((b) => (b && b.type === 'image/webp' ? ok(b) : c.toBlob(ok, 'image/png')), 'image/webp', 0.9));
+  function clientPanel() {
+    const box = $('pv-clientinfo'), form = $('pv-savecar');
+    const fromPhoto = !S.car && S.frames.length > 0;
+    form.hidden = !fromPhoto;
+    if (fromPhoto && S.paint) form.color.value = S.paint.name;
+    box.hidden = !(S.car && S.car.cliente); if (box.hidden) return;
+    const c = S.car;
+    box.innerHTML = `<b>${esc(c.marca + ' ' + c.modelo)}</b><span>${esc([c.dono || 'Cliente sem nome', c.fone].filter(Boolean).join(' · '))}</span><span>${esc([c.placa && 'Placa ' + c.placa, c.cor && 'Cor ' + c.cor, c.data && 'salvo em ' + c.data.split('-').reverse().join('/')].filter(Boolean).join(' · '))}</span>
+      <div class="pv-row"><button class="btn sm" type="button" id="pv-cor-save" ${S.paint ? '' : 'hidden'}>Salvar cor ${S.paint ? esc(S.paint.name) : ''}</button>${c.fone ? `<a class="btn ghost sm" target="_blank" rel="noopener" href="https://wa.me/55${esc(c.fone.replace(/\D/g, ''))}">WhatsApp</a>` : ''}${window.PV_ADMIN ? '<button class="btn ghost sm" type="button" id="pv-cdel">Apagar carro</button>' : ''}</div>`;
+    const cs = $('pv-cor-save');
+    if (cs) cs.onclick = async () => {
+      try {
+        const fd = new FormData(); fd.append('action', 'cust_update'); fd.append('id', c.cid); fd.append('color', S.paint.name);
+        const j = await post(fd); Object.assign(c, j.car); clientPanel(); renderCars(); alertMsg('Cor salva no cadastro do carro.');
+      } catch (e) { alertMsg('Não consegui salvar: ' + e.message); }
+    };
+    const del = $('pv-cdel');
+    if (del) del.onclick = async () => {
+      if (!confirm('Apagar o carro ' + c.marca + ' ' + c.modelo + ' de ' + (c.dono || 'cliente') + '? Isso não pode ser desfeito.')) return;
+      try {
+        const fd = new FormData(); fd.append('action', 'cust_delete'); fd.append('id', c.cid); await post(fd);
+        CLIENT.splice(CLIENT.indexOf(c), 1); S.car = null; S.frames = []; $('pv-tools').hidden = true; $('pv-empty').hidden = false;
+        renderFrames(); renderCars(); clientPanel(); alertMsg('Carro apagado.');
+      } catch (e) { alertMsg('Não consegui apagar: ' + e.message); }
+    };
+  }
+  $('pv-savecar').onsubmit = async (e) => {
+    e.preventDefault();
+    const form = e.currentTarget, btn = form.querySelector('button'); btn.disabled = true;
+    try {
+      busy('Salvando o carro do cliente...');
+      const fd = new FormData(form); fd.append('action', 'cust_save');
+      for (const f of S.frames) {
+        fd.append('imgs[]', await toBlob(f.canvas), 'carro.webp'); fd.append('angles[]', f.label); fd.append('wheels[]', wheelsJson(f));
+      }
+      const j = await post(fd), car = j.car;
+      CLIENT.unshift(car); S.car = car; S.tab = 'clientes';
+      S.frames.forEach((f, i) => { const ft = car.fotos[i]; if (ft) { f.imgId = ft.id; f.carId = car.cid; f.kind = 'cliente'; f.dirty = false; } });
+      form.reset(); renderCars(); clientPanel(); renderAros(); syncSave();
+      alertMsg('Carro salvo! Na próxima venda é só abrir "Carros de clientes".', 7000);
+    } catch (err) { alertMsg('Não consegui salvar o carro: ' + err.message, 9000); }
+    finally { busy(null); btn.disabled = false; }
+  };
+  (function datalists() {
+    const marcas = [...new Set(CARS.map((c) => c.marca))].sort(), dl = $('pv-marcas');
+    marcas.forEach((m) => { const o = document.createElement('option'); o.value = m; dl.append(o); });
+    const dm = $('pv-modelos');
+    CARS.forEach((c) => { const o = document.createElement('option'); o.value = c.modelo; dm.append(o); });
+    $('pv-savecar').model.addEventListener('change', (e) => {
+      const m = CARS.find((c) => c.modelo.toUpperCase() === e.target.value.trim().toUpperCase());
+      const f = e.target.form;
+      if (m) { if (!f.brand.value) f.brand.value = m.marca; if (!f.tire.value) f.tire.value = m.pneu; }
+    });
+  })();
+
+  /* ---------- cor do carro: simulacao de pintura ---------- */
+  const CORES = [['Branco', '#f1f2f3'], ['Prata', '#b8bcc1'], ['Cinza', '#6a6e73'], ['Preto', '#18191b'], ['Vermelho', '#b3141c'], ['Azul', '#1f4fa5'], ['Azul claro', '#5aa0d8'], ['Verde', '#2f6b3a'], ['Amarelo', '#e8b512'], ['Laranja', '#e0651c'], ['Bege', '#c9b48f'], ['Marrom', '#5b3a26']];
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.substr(i, 2), 16));
+  function renderCores() {
+    const box = $('pv-cores'); box.innerHTML = '';
+    const mk = (name, hex) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-cor' + ((S.paint ? S.paint.hex : null) === hex ? ' on' : '');
+      b.title = name; b.setAttribute('aria-label', name);
+      b.innerHTML = hex ? `<i style="background:${hex}"></i><small>${name}</small>` : '<i class="orig"></i><small>Original</small>';
+      b.onclick = () => { S.paint = hex ? { name, hex } : null; renderCores(); clientPanel(); };
+      box.append(b);
+    };
+    mk('Original', null); CORES.forEach(([n, h]) => mk(n, h));
+    const l = document.createElement('label'); l.className = 'pv-cor'; l.title = 'Outra cor';
+    l.innerHTML = `<input type="color" value="${S.paint ? S.paint.hex : '#7a1f2b'}" aria-label="Outra cor"><small>Outra</small>`;
+    l.querySelector('input').oninput = (e) => { S.paint = { name: 'Personalizada ' + e.target.value.toUpperCase(), hex: e.target.value }; renderCores(); clientPanel(); };
+    box.append(l);
+  }
+  // pinta a lataria: acha a cor da porta (meio do carro), troca so o que parece com ela, mantendo luz e sombra
+  function painted(f, hex) {
+    f._paint = f._paint || {};
+    if (f._paint[hex]) return f._paint[hex];
+    const W = f.canvas.width, H = f.canvas.height, src = f.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H), d = src.data;
+    const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+    const sample = [];
+    for (let y = Math.round(H * 0.42); y < H * 0.68; y += 3) for (let x = Math.round(W * 0.28); x < W * 0.72; x += 3) {
+      const i = (y * W + x) * 4; if (d[i + 3] > 220) sample.push([d[i], d[i + 1], d[i + 2]]);
+    }
+    if (!sample.length) return f.canvas;
+    const med = (k) => sample.map((p) => p[k]).sort((a, b) => a - b)[sample.length >> 1];
+    const dom = [med(0), med(1), med(2)], Ld = Math.max(8, lum(...dom)), tgt = hexRgb(hex), Lt = Math.max(8, lum(...tgt));
+    const chroma = (r, g, b, L) => [r - L, g - L, b - L];
+    const cd = chroma(...dom, Ld);
+    const out = new ImageData(W, H), o = out.data;
+    const wheelHit = (x, y) => f.wheels.some((w) => ((x - w.x) / (w.r * w.sq * 1.0)) ** 2 + ((y - w.y) / (w.r * 1.0)) ** 2 < 1);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+      o[i] = r; o[i + 1] = g; o[i + 2] = b; o[i + 3] = a;
+      if (a < 10 || (f.wheelsOn && wheelHit(x, y))) continue;
+      const L = lum(r, g, b), c = chroma(r, g, b, L);
+      const dist = Math.abs(L - Ld) / 255 * (Ld > 120 ? 0.85 : 1.2) + Math.hypot(c[0] - cd[0], c[1] - cd[1], c[2] - cd[2]) / 255 * 1.6;
+      let m = 1 - Math.min(1, Math.max(0, (dist - 0.16) / 0.16));
+      if (m <= 0) continue;
+      const k = Ld > 90 ? Math.min(1.6, L / Ld) : 1 + (L - Ld) / 160;
+      for (let j = 0; j < 3; j++) {
+        const v = Math.min(255, Math.max(0, tgt[j] * k + Math.max(0, L - Ld) * 0.35));
+        o[i + j] = d[i + j] * (1 - m) + v * m;
+      }
+    }
+    const c = document.createElement('canvas'); c.width = W; c.height = H; c.getContext('2d').putImageData(out, 0, 0);
+    f._paint[hex] = c; return c;
+  }
+
+  renderRodas(''); renderCars(); renderAros(); adminCar(); clientPanel(); renderCores(); requestAnimationFrame(loop);
   const sel = CARS.find((c) => c.id === window.PV_CAR_SEL);
   if (sel) loadLibraryCar(sel);
   window.__PV = S; // usado nos testes

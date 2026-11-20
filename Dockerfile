@@ -4,6 +4,13 @@ FROM php:8.3-apache
 RUN docker-php-ext-install pdo_mysql \
  && sed -ri 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/000-default.conf /etc/apache2/apache2.conf
 
+# Removedor de fundo do provador de rodas (roda no servidor, funciona em qualquer celular)
+RUN (apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-numpy python3-pil \
+  && pip3 install --no-cache-dir --break-system-packages onnxruntime \
+  && python3 -c "import onnxruntime, numpy, PIL; print('[ERP] removedor de fundo OK', onnxruntime.__version__)") \
+  || echo "[ERP] AVISO: removedor de fundo no servidor nao instalou; o provador usa o do navegador." ; \
+  rm -rf /var/lib/apt/lists/*
+
 RUN printf '%s\n' 'ServerTokens Prod' 'ServerSignature Off' 'ServerName localhost' '<Directory /var/www/html/public/uploads>' '    <FilesMatch "\.(php|phtml|phar)$">' '        Require all denied' '    </FilesMatch>' '    Options -Indexes' '</Directory>' '<FilesMatch "^\.">' '    Require all denied' '</FilesMatch>' > /etc/apache2/conf-available/erp.conf
 RUN a2enconf erp
 RUN printf '%s\n' 'display_errors=Off' 'log_errors=On' 'error_log=/dev/stderr' 'upload_max_filesize=48M' 'post_max_size=50M' 'date.timezone=America/Bahia' > /usr/local/etc/php/conf.d/erp.ini
