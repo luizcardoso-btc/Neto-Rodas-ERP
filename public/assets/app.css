@@ -432,3 +432,17 @@ td.actions{white-space:normal;min-width:150px}
 .p3-admin summary{cursor:pointer}
 .pv [hidden],.pv[hidden]{display:none!important}
 #p3-c{display:block;width:100%;height:100%;touch-action:none}
+/* provador: biblioteca de carros em PNG */
+.pv-cars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;max-height:320px;overflow:auto;margin-top:8px}
+.pv-car{display:flex;flex-direction:column;gap:4px;text-align:left;border:1px solid var(--line,#e5e7eb);background:transparent;border-radius:12px;padding:6px;cursor:pointer;font:inherit;color:inherit;min-width:0}
+.pv-car img{width:100%;height:58px;object-fit:contain;background:radial-gradient(#3a3934,#151513);border-radius:8px}
+.pv-car i{display:grid;place-items:center;height:58px;border-radius:8px;background:repeating-linear-gradient(45deg,#f3f4f6 0 8px,#e5e7eb 8px 16px);font-style:normal;font-size:12px;color:#6b7280}
+.pv-car b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-car small{display:block;opacity:.7;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-car.sem{opacity:.75}
+.pv-car.on{border-color:#f5b800;background:#fff8d6;opacity:1}
+.pv-admin-imgs{display:grid;gap:6px;margin-top:10px}
+.pv-aimg{display:grid;grid-template-columns:64px 1fr auto;gap:8px;align-items:center}
+.pv-aimg img{width:64px;height:40px;object-fit:contain;background:#1a1a18;border-radius:6px}
+.pv-aimg form{margin:0}
+.pv-aimg select{width:100%}

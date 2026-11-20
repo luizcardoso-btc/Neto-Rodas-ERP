@@ -3,12 +3,12 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const cv = $('pv-c'), ctx = cv.getContext('2d');
-  const PNEUS = { 14: [175, 70, 14], 15: [185, 60, 15], 16: [195, 50, 16], 17: [205, 40, 17], 18: [215, 35, 18] };
-  const ANGULOS = ['Lateral direita', '3/4 traseira direita', 'Traseira', '3/4 traseira esquerda', 'Lateral esquerda', '3/4 frente esquerda', 'Frente', '3/4 frente direita'];
+  const ANGULOS = window.PV_ANGULOS || ['Lateral direita', '3/4 traseira direita', 'Traseira', '3/4 traseira esquerda', 'Lateral esquerda', '3/4 frente esquerda', 'Frente', '3/4 frente direita'];
+  const CARS = window.PV_CARS || [];
   const SISTEMA = [['esportiva', 'Esportiva 5 raios'], ['multi', 'Multirraios'], ['duplo', 'Raios duplos'], ['turbina', 'Turbina']];
 
   const S = {
-    frames: [], cur: 0, pos: 0, original: false, adjust: false, spin: false,
+    frames: [], cur: 0, pos: 0, original: false, adjust: false, spin: false, car: null, ang: 0, last: performance.now(),
     slot: 'A', A: { aro: 17, roda: { tipo: 'sis', id: 'esportiva' } }, B: { aro: 15, roda: { tipo: 'sis', id: 'multi' } },
     rimCache: new Map(), shoot: null, drag: null, t0: performance.now()
   };
@@ -16,10 +16,20 @@
   const frame = () => S.frames[S.cur];
 
   /* ---------- medidas ---------- */
+  // pneu original do carro (ou 185/60 R15 para foto de cliente) e o pneu equivalente em cada aro, mesmo diametro total
+  function parseTire(t) { const m = /(\d{3})\/(\d{2})\s*R(\d{2})/i.exec(t || '') || [0, 185, 60, 15]; return { w: +m[1], p: +m[2], a: +m[3] }; }
+  const basePneu = () => (S.car && S.car.pneu) || '185/60 R15';
   function tire(aro) {
-    const [l, p, a] = PNEUS[aro], flanco = l * p / 100, diam = a * 25.4 + 2 * flanco;
-    return { l, p, a, flanco, diam, ratio: (a * 25.4) / diam };
+    const o = parseTire(basePneu()), D = o.a * 25.4 + 2 * o.w * o.p / 100;
+    let l = o.w, p = o.p;
+    if (aro !== o.a) {
+      l = o.w + 10 * (aro - o.a); l = Math.max(145, Math.min(335, Math.round((l - 5) / 10) * 10 + 5));
+      p = Math.round(((D - aro * 25.4) / 2 / l * 100) / 5) * 5; p = Math.max(25, Math.min(85, p));
+    }
+    const flanco = l * p / 100, diam = aro * 25.4 + 2 * flanco;
+    return { l, p, a: aro, flanco, diam, diff: (diam / D - 1) * 100, ratio: (aro * 25.4) / diam };
   }
+  function aroRange() { const a = parseTire(basePneu()).a, r = []; for (let i = Math.max(13, a - 1); i <= Math.min(22, a + 4); i++) r.push(i); return r; }
 
   /* ---------- modelo de remocao de fundo (U2-Netp, 4,5 MB, roda no navegador) ---------- */
   let session = null;
@@ -217,9 +227,10 @@
     g.strokeStyle = '#ffd21a'; g.lineWidth = L.rx * 0.012; g.beginPath(); g.arc(0, 0, L.rx * 0.985, 0, Math.PI * 2); g.stroke();
     g.restore(); g.restore();
   }
-  function drawCar(g, L, f, alpha, withMarks) {
+  function drawCar(g, L, f, alpha, withMarks, sx) {
     if (!f) return;
-    const R = carRect(L, f), src = S.original ? f.orig : f.canvas;
+    const R = carRect(L, f); sx = sx == null ? 1 : sx;
+    g.save(); g.translate(L.cx, 0); g.scale(sx, 1); g.translate(-L.cx, 0);
     // sombra de contato
     g.save(); g.globalAlpha = 0.55 * alpha; const sh = g.createRadialGradient(L.cx, R.y + R.h, 2, L.cx, R.y + R.h, R.w * 0.55);
     sh.addColorStop(0, 'rgba(0,0,0,.9)'); sh.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = sh;
@@ -229,6 +240,7 @@
     g.save(); g.globalAlpha = 0.16 * alpha; g.translate(0, (R.y + R.h) * 2); g.scale(1, -1);
     g.drawImage(comp, R.x, R.y, R.w, R.h); g.restore();
     g.save(); g.globalAlpha = alpha; g.drawImage(S.original ? f.orig : comp, R.x, R.y, R.w, R.h); g.restore();
+    g.restore();
     if (withMarks && !S.original && f.wheelsOn) f.wheels.forEach((w) => {
       const x = R.x + w.x * R.k, y = R.y + w.y * R.k, r = w.r * R.k, lw = Math.max(2, L.W / 600);
       g.save(); g.strokeStyle = '#ffd21a'; g.lineWidth = lw; g.setLineDash([lw * 4, lw * 3]);
@@ -256,7 +268,19 @@
   }
   function loop(now) {
     resize();
-    const t = (now - S.t0) / 1000, L = layout();
+    const t = (now - S.t0) / 1000, L = layout(), dt = Math.min(0.05, (now - S.last) / 1000); S.last = now;
+    if (S.frames.length === 1) {
+      // uma foto so: a plataforma gira e o carro vira junto (mostra os dois lados), andando mais rapido quando esta de frente
+      if (S.spin) S.ang += dt * (0.55 + 2.2 * (1 - Math.abs(Math.cos(S.ang))));
+      else if (!S.drag) { const per = S.adjust ? 2 * Math.PI : Math.PI, tgt = Math.round(S.ang / per) * per, d = tgt - S.ang; S.ang += Math.sign(d) * Math.min(Math.abs(d), dt * (S.adjust ? 6 : 2.5)); } // para de lado
+      drawStage(ctx, L, S.ang, {});
+      // gira de verdade so ate certo ponto: encolhe ate 40% e funde com o lado espelhado, sem virar uma "folha"
+      const cs = Math.cos(S.ang), w = 0.4 + 0.6 * Math.abs(cs), aPos = Math.max(0, Math.min(1, (cs + 0.35) / 0.7));
+      if (aPos < 1) drawCar(ctx, L, S.frames[0], 1 - aPos, false, -w);
+      if (aPos > 0) drawCar(ctx, L, S.frames[0], aPos, S.adjust && cs > 0.999, w);
+      info();
+      requestAnimationFrame(loop); return;
+    }
     drawStage(ctx, L, S.spin || S.frames.length < 2 ? t : S.pos * 0.8, {});
     if (S.frames.length) {
       if (S.spin && S.frames.length > 1) S.pos = (S.pos + 0.012) % S.frames.length;
@@ -322,15 +346,16 @@
         const side = /Lateral|3\/4/.test(it.label);
         S.frames.push({ canvas: r.canvas, orig: r.orig, label: it.label, wheels: findWheels(r.canvas), wheelsOn: side });
       }
-      S.pos = 0; S.cur = 0; S.spin = false;
-      $('pv-empty').hidden = true; $('pv-tools').hidden = false; $('pv-girar').hidden = S.frames.length < 2;
-      renderFrames();
+      S.car = null; renderCars(); renderAros(); adminCar();
+      S.pos = 0; S.cur = 0; S.ang = 0; S.spin = S.frames.length === 1;
+      $('pv-empty').hidden = true; $('pv-tools').hidden = false; $('pv-girar').classList.toggle('on', S.spin);
+      renderFrames(); syncBtns();
     } catch (e) {
       console.error(e); alertMsg('Não consegui processar a foto. Tente de novo com boa luz e o carro inteiro no quadro.');
     } finally { busy(null); }
   }
   function busy(t) { $('pv-busy').hidden = !t; if (t) $('pv-busy-t').textContent = t; }
-  function alertMsg(t) { const i = $('pv-info'); i.hidden = false; i.textContent = t; setTimeout(() => { i.hidden = true; }, 5000); }
+  function alertMsg(t) { const i = $('pv-info'); i.hidden = false; i.dataset.msg = '1'; i.textContent = t; clearTimeout(alertMsg.t); alertMsg.t = setTimeout(() => { delete i.dataset.msg; }, 5000); }
 
   /* ---------- miniaturas dos angulos ---------- */
   function renderFrames() {
@@ -342,10 +367,10 @@
       b.append(th); const s = document.createElement('span'); s.textContent = f.label; b.append(s);
       const t = document.createElement('label'); t.className = 'pv-chk';
       t.innerHTML = `<input type="checkbox" ${f.wheelsOn ? 'checked' : ''}> rodas`;
-      t.querySelector('input').onchange = (e) => { f.wheelsOn = e.target.checked; f._ck = null; };
+      t.querySelector('input').onchange = (e) => { f.wheelsOn = e.target.checked; f._ck = null; f.dirty = true; syncSave(); };
       t.onclick = (e) => e.stopPropagation();
       b.append(t);
-      b.onclick = () => { S.spin = false; S.pos = i; S.cur = i; renderFrames(); syncBtns(); };
+      b.onclick = () => { S.spin = false; $('pv-girar').classList.remove('on'); S.pos = i; S.cur = i; renderFrames(); syncBtns(); };
       box.append(b);
     });
   }
@@ -358,19 +383,20 @@
   }
   cv.addEventListener('pointerdown', (e) => {
     const h = hit(e); if (!h) return;
-    if (S.adjust && h.f.wheelsOn) {
+    if (S.adjust && h.f.wheelsOn && (S.frames.length > 1 || Math.cos(S.ang) > 0.999)) {
       for (const [i, w] of h.f.wheels.entries()) {
         if (Math.hypot(h.x - (w.x + w.r * w.sq), h.y - w.y) < h.tol) { S.drag = { i, m: 'w' }; break; }
         if (Math.hypot(h.x - w.x, h.y - (w.y - w.r)) < h.tol) { S.drag = { i, m: 'h' }; break; }
         if (Math.hypot((h.x - w.x) / w.sq, h.y - w.y) < w.r) { S.drag = { i, m: 'm', dx: h.x - w.x, dy: h.y - w.y }; break; }
       }
     }
-    if (!S.drag && S.frames.length > 1) { S.drag = { m: 'spin', x0: e.clientX, p0: S.pos }; S.spin = false; }
+    if (!S.drag && S.frames.length) { S.drag = { m: 'spin', x0: e.clientX, p0: S.frames.length > 1 ? S.pos : S.ang }; S.spin = false; $('pv-girar').classList.remove('on'); }
     if (S.drag) { cv.setPointerCapture(e.pointerId); e.preventDefault(); }
   });
   cv.addEventListener('pointermove', (e) => {
     const d = S.drag; if (!d) return;
     if (d.m === 'spin') {
+      if (S.frames.length === 1) { S.ang = d.p0 + (e.clientX - d.x0) / cv.clientWidth * Math.PI * 2; return; }
       const n = S.frames.length, step = cv.clientWidth / (n * 1.2);
       S.pos = (((d.p0 - (e.clientX - d.x0) / step) % n) + n) % n; return;
     }
@@ -378,10 +404,10 @@
     if (d.m === 'm') { w.x = h.x - d.dx; w.y = h.y - d.dy; }
     if (d.m === 'h') { w.r = Math.max(5, w.y - h.y); }
     if (d.m === 'w') { w.sq = Math.max(0.35, Math.min(1.2, Math.abs(h.x - w.x) / w.r)); }
-    h.f._ck = null;
+    h.f._ck = null; h.f.dirty = true; syncSave();
   });
   const end = () => {
-    if (S.drag && S.drag.m === 'spin') { S.pos = Math.round(S.pos) % S.frames.length; renderFrames(); }
+    if (S.drag && S.drag.m === 'spin' && S.frames.length > 1) { S.pos = Math.round(S.pos) % S.frames.length; renderFrames(); }
     S.drag = null;
   };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
@@ -389,7 +415,7 @@
   /* ---------- painel ---------- */
   function info() {
     const t = tire(cfg().aro), el = $('pv-info');
-    if (!el.dataset.msg) { el.hidden = false; el.innerHTML = `<b>${S.slot} · Aro ${t.a}</b> ${t.l}/${t.p} R${t.a} · flanco ${Math.round(t.flanco)} mm${S.frames.length > 1 ? ' · ' + (frame() ? frame().label : '') : ''}`; }
+    if (!el.dataset.msg) { el.hidden = false; el.innerHTML = `<b>${S.car ? esc(S.car.marca + ' ' + S.car.modelo) + ' · ' : ''}${S.slot} · Aro ${t.a}</b> ${t.l}/${t.p} R${t.a} · flanco ${Math.round(t.flanco)} mm${S.frames.length > 1 ? ' · ' + (frame() ? frame().label : '') : ''}`; }
   }
   const fmtMoney = (v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   function rodaLabel(c) {
@@ -404,14 +430,20 @@
     document.querySelectorAll('#pv-sys button').forEach((b) => b.classList.toggle('on', cfg().roda.tipo === 'sis' && cfg().roda.id === b.dataset.v));
     document.querySelectorAll('#pv-rodas button').forEach((b) => b.classList.toggle('on', cfg().roda.tipo === 'loja' && cfg().roda.id === +b.dataset.v));
     const t = tire(cfg().aro);
-    $('pv-aro-t').textContent = `Pneu ${t.l}/${t.p} R${t.a}: flanco de ${Math.round(t.flanco)} mm, diâmetro total ${Math.round(t.diam)} mm. Quanto maior o aro, mais roda e menos borracha aparecem.`;
+    const orig = parseTire(basePneu()).a === t.a;
+    $('pv-aro-t').textContent = `Pneu ${t.l}/${t.p} R${t.a}${orig ? ' (original' + (S.car ? ' do ' + S.car.modelo : '') + ')' : ''}: flanco de ${Math.round(t.flanco)} mm, diâmetro total ${Math.round(t.diam)} mm${orig ? '' : ` (${t.diff >= 0 ? '+' : ''}${t.diff.toFixed(1).replace('.', ',')}% do original)`}. Quanto maior o aro, mais roda e menos borracha aparecem.`;
   }
-  const aros = $('pv-aros');
-  Object.keys(PNEUS).forEach((a) => {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-opt'; b.dataset.v = a;
-    b.innerHTML = `${a}<small>${PNEUS[a][0]}/${PNEUS[a][1]}</small>`;
-    b.onclick = () => { cfg().aro = +a; syncBtns(); }; aros.append(b);
-  });
+  function renderAros() {
+    const aros = $('pv-aros'), list = aroRange(); aros.innerHTML = '';
+    ['A', 'B'].forEach((k) => { if (!list.includes(S[k].aro)) S[k].aro = list[Math.min(list.length - 1, k === 'A' ? 2 : 1)]; });
+    S.rimCache.clear();
+    list.forEach((a) => {
+      const t = tire(a), b = document.createElement('button'); b.type = 'button'; b.className = 'pv-opt'; b.dataset.v = a;
+      b.innerHTML = `${a}<small>${t.l}/${t.p}</small>`;
+      b.onclick = () => { cfg().aro = a; syncBtns(); }; aros.append(b);
+    });
+    syncBtns();
+  }
   const sys = $('pv-sys');
   SISTEMA.forEach(([id, n]) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'pv-opt'; b.dataset.v = id; b.textContent = n;
@@ -426,7 +458,7 @@
       b.innerHTML = `<img src="${r.img}" alt="" loading="lazy"><span><b>${esc(r.nome)}</b><small>${r.aro ? 'Aro ' + r.aro + ' · ' : ''}${r.estoque} em estoque · ${fmtMoney(r.preco)}</small></span>`;
       b.onclick = async () => {
         if (!rimImages.has(r.id)) { try { await prepareRim(r.id, toCanvas(await loadImg(r.img), 900)); } catch (e) { alertMsg('Não consegui abrir a foto dessa roda.'); return; } }
-        cfg().roda = { tipo: 'loja', id: r.id }; if (r.aro && PNEUS[r.aro]) cfg().aro = r.aro; syncBtns();
+        cfg().roda = { tipo: 'loja', id: r.id }; if (r.aro && aroRange().includes(+r.aro)) cfg().aro = +r.aro; syncBtns();
       };
       box.append(b);
     });
@@ -449,21 +481,127 @@
   $('pv-depois').onclick = () => { S.original = false; $('pv-depois').classList.add('on'); $('pv-antes').classList.remove('on'); };
   $('pv-girar').onclick = (e) => { S.spin = !S.spin; e.currentTarget.classList.toggle('on', S.spin); };
   $('pv-ajustar').onclick = (e) => {
-    S.adjust = !S.adjust; S.spin = false; e.currentTarget.classList.toggle('on', S.adjust);
+    S.adjust = !S.adjust; S.spin = false; $('pv-girar').classList.remove('on'); e.currentTarget.classList.toggle('on', S.adjust); syncSave();
     if (S.adjust) alertMsg('Arraste o círculo para o centro da roda. Bolinha de cima: tamanho. Bolinha do lado: deixa oval (foto de 3/4).');
   };
   $('pv-save').onclick = () => {
     const c = document.createElement('canvas'); c.width = 1600; c.height = 1000;
     const g = c.getContext('2d'), L = { W: 1600, H: 1000, cx: 800, py: 800, rx: 740, ry: 118 };
     drawStage(g, L, 0, {}); drawCar(g, L, frame(), 1, false);
-    const t = tire(cfg().aro), txt = `NETO RODAS E PNEUS · ${rodaLabel(cfg()).toUpperCase()} · ${t.l}/${t.p} R${t.a}`;
+    const t = tire(cfg().aro), txt = `NETO RODAS E PNEUS · ${S.car ? (S.car.marca + ' ' + S.car.modelo + ' · ').toUpperCase() : ''}${rodaLabel(cfg()).toUpperCase()} · ${t.l}/${t.p} R${t.a}`;
     g.font = '700 30px Inter, Arial, sans-serif'; const w = g.measureText(txt).width;
     g.fillStyle = 'rgba(12,12,11,.8)'; g.fillRect(30, 930, w + 40, 48); g.fillStyle = '#ffd21a'; g.textBaseline = 'middle'; g.fillText(txt, 50, 954);
     $('pv-out-img').src = c.toDataURL('image/jpeg', 0.9); $('pv-out').hidden = false; $('pv-out-x').focus();
   };
   $('pv-out-x').onclick = () => { $('pv-out').hidden = true; };
 
-  renderRodas(''); syncBtns(); requestAnimationFrame(loop);
+  /* ---------- biblioteca de carros (PNG sem fundo, uma foto por angulo) ---------- */
+  // corta as bordas transparentes. Retorna null se a imagem nao tem transparencia (ai removemos o fundo)
+  function trimAlpha(img) {
+    const c = toCanvas(img, 1800), W = c.width, H = c.height, d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1, transp = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const a = d[(y * W + x) * 4 + 3]; if (a < 250) transp++;
+      if (a > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    }
+    if (transp < W * H * 0.03 || x1 < x0) return null;
+    const o = document.createElement('canvas'); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
+    o.getContext('2d').drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
+    return o;
+  }
+  const carFotos = (c) => c.fotos || [];
+  function renderCars() {
+    const box = $('pv-cars'), q = ($('pv-cq').value || '').toLowerCase().trim(); box.innerHTML = '';
+    const list = CARS.filter((c) => !q || (c.marca + ' ' + c.modelo + ' ' + c.tipo).toLowerCase().includes(q))
+      .sort((a, b) => (carFotos(b).length > 0) - (carFotos(a).length > 0) || (a.marca + a.modelo).localeCompare(b.marca + b.modelo));
+    if (!list.length) { box.innerHTML = '<p class="small muted">Nenhum carro encontrado.' + (window.PV_ADMIN ? ' Cadastre em "Biblioteca" abaixo.' : '') + '</p>'; return; }
+    list.slice(0, q ? 80 : 120).forEach((c) => {
+      const f = carFotos(c)[0], b = document.createElement('button'); b.type = 'button';
+      b.className = 'pv-car' + (S.car && S.car.id === c.id ? ' on' : '') + (f ? '' : ' sem');
+      b.innerHTML = (f ? `<img src="${esc(f.src)}" alt="" loading="lazy">` : '<i>sem foto</i>') + `<span><b>${esc(c.modelo)}</b><small>${esc(c.marca)} · ${esc(c.pneu)}${carFotos(c).length > 1 ? ' · ' + carFotos(c).length + ' ângulos' : ''}</small></span>`;
+      b.onclick = () => loadLibraryCar(c);
+      box.append(b);
+    });
+  }
+  async function loadLibraryCar(c) {
+    S.car = c; S.adjust = false; $('pv-ajustar').classList.remove('on'); renderCars(); renderAros(); adminCar();
+    const fotos = carFotos(c);
+    if (!fotos.length) {
+      S.frames = []; $('pv-tools').hidden = true; $('pv-empty').hidden = false; renderFrames();
+      $('pv-empty').querySelector('h2').textContent = c.marca + ' ' + c.modelo + ' ainda sem foto';
+      $('pv-empty').querySelector('p').textContent = window.PV_ADMIN ? 'Envie os PNGs sem fundo em "Biblioteca: fotos e cadastro de carros", no painel ao lado. Enquanto isso dá para fotografar o carro do cliente.' : 'Peça ao administrador para enviar as fotos desse modelo, ou fotografe o carro do cliente.';
+      return;
+    }
+    try {
+      const frames = [];
+      for (const [i, ft] of fotos.entries()) {
+        busy(`Carregando ${c.modelo} (${i + 1} de ${fotos.length})...`);
+        const img = await loadImg(ft.src);
+        let cnv = trimAlpha(img);
+        if (!cnv) cnv = (await cutout(toCanvas(img, 1600))).canvas;
+        const W = cnv.width, H = cnv.height, sv = ft.rodas;
+        const wheels = sv && sv.list && sv.list.length ? sv.list.map((w) => ({ x: w.x * W, y: w.y * H, r: w.r * W, sq: w.sq || 1 })) : findWheels(cnv);
+        const on = sv ? !!sv.on : /Lateral|3\/4/.test(ft.angulo);
+        frames.push({ canvas: cnv, orig: cnv, label: ft.angulo, wheels, wheelsOn: on, imgId: ft.id, carId: c.id });
+      }
+      if (S.car !== c) return; // trocou de carro no meio
+      S.frames = frames; S.pos = 0; S.cur = 0; S.ang = 0; S.spin = true; S.original = false;
+      $('pv-empty').hidden = true; $('pv-tools').hidden = false; $('pv-girar').classList.add('on');
+      $('pv-depois').classList.add('on'); $('pv-antes').classList.remove('on');
+      renderFrames(); syncBtns(); syncSave();
+    } catch (e) {
+      console.error(e); alertMsg('Não consegui abrir as fotos desse carro.');
+    } finally { busy(null); }
+  }
+  $('pv-cq').oninput = renderCars;
+
+  // admin: lista das fotos do carro, com angulo e excluir
+  function adminCar() {
+    const box = $('pv-admin-car'); if (!box) return;
+    box.hidden = !S.car; if (!S.car) return;
+    const c = S.car;
+    box.querySelectorAll('.pv-car-id').forEach((i) => { i.value = c.id; });
+    box.querySelector('.pv-car-nome').textContent = c.marca + ' ' + c.modelo;
+    const ed = $('pv-car-edit'); ed.brand.value = c.marca; ed.model.value = c.modelo; ed.tire.value = c.pneu;
+    const list = $('pv-admin-imgs'), tok = esc(window.PV_CSRF || ''); list.innerHTML = '';
+    if (!carFotos(c).length) { list.innerHTML = '<p class="small muted">Nenhuma foto ainda.</p>'; return; }
+    carFotos(c).forEach((f) => {
+      const d = document.createElement('div'); d.className = 'pv-aimg';
+      d.innerHTML = `<img src="${esc(f.src)}" alt="">
+        <form method="post"><input type="hidden" name="_csrf" value="${tok}"><input type="hidden" name="action" value="car_img_angle"><input type="hidden" name="id" value="${c.id}"><input type="hidden" name="img" value="${f.id}">
+          <select name="angle" aria-label="Ângulo da foto" onchange="this.form.submit()">${ANGULOS.map((a) => `<option${a === f.angulo ? ' selected' : ''}>${a}</option>`).join('')}</select></form>
+        <form method="post" onsubmit="return confirm('Apagar esta foto?')"><input type="hidden" name="_csrf" value="${tok}"><input type="hidden" name="action" value="car_img_delete"><input type="hidden" name="id" value="${c.id}"><input type="hidden" name="img" value="${f.id}">
+          <button class="btn ghost sm" type="submit">Apagar</button></form>`;
+      list.append(d);
+    });
+  }
+  // admin: salva a posicao das rodas da foto da biblioteca (vale para todo mundo)
+  function syncSave() {
+    const b = $('pv-salvar-rodas'); if (!b) return;
+    b.hidden = !(S.adjust && S.frames.some((f) => f.imgId && f.dirty));
+  }
+  if ($('pv-salvar-rodas')) $('pv-salvar-rodas').onclick = async (e) => {
+    const btn = e.currentTarget; btn.disabled = true;
+    try {
+      for (const f of S.frames.filter((x) => x.imgId && x.dirty)) {
+        const W = f.canvas.width, H = f.canvas.height;
+        const body = new URLSearchParams({ action: 'car_img_wheels', id: f.carId, img: f.imgId,
+          wheels: JSON.stringify({ on: f.wheelsOn, list: f.wheels.map((w) => ({ x: +(w.x / W).toFixed(4), y: +(w.y / H).toFixed(4), r: +(w.r / W).toFixed(4), sq: +w.sq.toFixed(3) })) }) });
+        const r = await fetch(location.pathname + location.search, { method: 'POST', body, headers: { 'X-CSRF-TOKEN': window.PV_CSRF || '' }, credentials: 'same-origin' });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || 'erro');
+        f.dirty = false;
+        const ft = carFotos(S.car || {}).find((x) => x.id === f.imgId);
+        if (ft) ft.rodas = JSON.parse(body.get('wheels'));
+      }
+      alertMsg('Posição das rodas salva. Na próxima vez esse carro já abre certinho.');
+    } catch (err) { alertMsg('Não consegui salvar: ' + err.message); }
+    finally { btn.disabled = false; syncSave(); }
+  };
+
+  renderRodas(''); renderCars(); renderAros(); adminCar(); requestAnimationFrame(loop);
+  const sel = CARS.find((c) => c.id === window.PV_CAR_SEL);
+  if (sel) loadLibraryCar(sel);
   window.__PV = S; // usado nos testes
   window.PVAPI = { prepareRim, rimImages, loadImg, toCanvas };
 })();

@@ -1,65 +1,120 @@
 <?php
 use App\Database;
 
-// Biblioteca de carros: admin pode corrigir medidas e anexar um modelo 3D real (.glb)
+// Biblioteca de carros: fotos PNG sem fundo por angulo. Admin cadastra carros, envia fotos e salva a posicao das rodas.
+const PV_ANGULOS = ['Lateral direita', '3/4 traseira direita', 'Traseira', '3/4 traseira esquerda', 'Lateral esquerda', '3/4 frente esquerda', 'Frente', '3/4 frente direita'];
+$pvAjax = ($_POST['action'] ?? '') === 'car_img_wheels';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && str_starts_with((string) ($_POST['action'] ?? ''), 'car_')) {
     $id = (int) ($_POST['id'] ?? 0);
+    $back = url('provador', ['carro' => $id]);
     try {
         if (!App\Auth::isAdmin()) {
             throw new DomainException('Somente o administrador pode alterar a biblioteca de carros.');
         }
-        $car = Database::one('SELECT * FROM car_models WHERE id = ?', [$id]);
-        if (!$car) {
-            throw new DomainException('Carro nao encontrado.');
-        }
-        if ($_POST['action'] === 'car_edit') {
-            $tire = strtoupper(trim((string) ($_POST['tire'] ?? '')));
-            if (!preg_match('#^\d{3}/\d{2} ?R\d{2}$#', $tire)) {
-                throw new DomainException('Pneu original no formato 185/60 R15.');
+        $action = (string) $_POST['action'];
+        if ($action === 'car_new') {
+            $brand = upper((string) ($_POST['brand'] ?? ''));
+            $model = upper((string) ($_POST['model'] ?? ''));
+            $type = in_array($_POST['body_type'] ?? '', ['hatch', 'sedan', 'suv', 'picape'], true) ? $_POST['body_type'] : 'hatch';
+            $tire = preg_replace('#\s*R#i', ' R', strtoupper(trim((string) ($_POST['tire'] ?? ''))));
+            if ($brand === '' || $model === '' || !preg_match('#^\d{3}/\d{2} R\d{2}$#', $tire)) {
+                throw new DomainException('Informe marca, modelo e o pneu original no formato 185/60 R15.');
             }
-            $n = fn ($k) => max(500, min(7000, (int) ($_POST[$k] ?? 0)));
-            Database::run('UPDATE car_models SET length_mm = ?, width_mm = ?, height_mm = ?, wheelbase_mm = ?, tire = ? WHERE id = ?',
-                [$n('length_mm'), $n('width_mm'), $n('height_mm'), $n('wheelbase_mm'), preg_replace('#\s*R#', ' R', $tire), $id]);
-            flash('ok', 'Medidas do ' . $car['model'] . ' atualizadas.');
-        } elseif ($_POST['action'] === 'car_glb') {
-            $f = $_FILES['glb'] ?? null;
-            if (!$f || $f['error'] !== UPLOAD_ERR_OK) {
-                throw new DomainException('Envie o arquivo .glb (ate 45 MB).');
+            if (Database::value('SELECT id FROM car_models WHERE brand = ? AND model = ?', [$brand, $model])) {
+                throw new DomainException('Esse carro ja esta na biblioteca.');
             }
-            if ($f['size'] > 45 * 1024 * 1024 || strtolower(pathinfo($f['name'], PATHINFO_EXTENSION)) !== 'glb' || file_get_contents($f['tmp_name'], false, null, 0, 4) !== 'glTF') {
-                throw new DomainException('O arquivo precisa ser um modelo 3D .glb valido de ate 45 MB.');
+            $id = Database::insert('INSERT INTO car_models (brand, model, body_type, length_mm, width_mm, height_mm, wheelbase_mm, tire) VALUES (?,?,?,4200,1750,1500,2600,?)', [$brand, $model, $type, $tire]);
+            $back = url('provador', ['carro' => $id]);
+            flash('ok', "$brand $model cadastrado. Agora envie as fotos dele.");
+        } else {
+            $car = Database::one('SELECT * FROM car_models WHERE id = ?', [$id]);
+            if (!$car) {
+                throw new DomainException('Carro nao encontrado.');
             }
-            $dir = __DIR__ . '/../public/uploads/cars';
-            if (!is_dir($dir)) {
-                mkdir($dir, 0775, true);
+            if ($action === 'car_edit') {
+                $tire = preg_replace('#\s*R#i', ' R', strtoupper(trim((string) ($_POST['tire'] ?? ''))));
+                if (!preg_match('#^\d{3}/\d{2} R\d{2}$#', $tire)) {
+                    throw new DomainException('Pneu original no formato 185/60 R15.');
+                }
+                Database::run('UPDATE car_models SET brand = ?, model = ?, tire = ? WHERE id = ?', [upper((string) $_POST['brand']) ?: $car['brand'], upper((string) $_POST['model']) ?: $car['model'], $tire, $id]);
+                flash('ok', 'Carro atualizado.');
+            } elseif ($action === 'car_img_upload') {
+                $files = $_FILES['imgs'] ?? null;
+                if (!$files || !is_array($files['name'])) {
+                    throw new DomainException('Escolha as fotos do carro (PNG sem fundo).');
+                }
+                $dir = __DIR__ . '/../public/uploads/cars';
+                if (!is_dir($dir)) {
+                    mkdir($dir, 0775, true);
+                }
+                $next = (int) Database::value('SELECT COALESCE(MAX(sort), -1) + 1 FROM car_images WHERE car_id = ?', [$id]);
+                $ok = 0;
+                foreach ($files['name'] as $i => $name) {
+                    if ($files['error'][$i] !== UPLOAD_ERR_OK || $files['size'][$i] > 12 * 1024 * 1024) {
+                        continue;
+                    }
+                    $info = @getimagesize($files['tmp_name'][$i]);
+                    $ext = ['image/png' => 'png', 'image/webp' => 'webp', 'image/jpeg' => 'jpg'][$info['mime'] ?? ''] ?? null;
+                    if (!$ext) {
+                        continue;
+                    }
+                    $file = 'car-' . $id . '-' . time() . '-' . $i . '.' . $ext;
+                    if (move_uploaded_file($files['tmp_name'][$i], $dir . '/' . $file)) {
+                        $angle = PV_ANGULOS[($next + $ok) % count(PV_ANGULOS)];
+                        Database::insert('INSERT INTO car_images (car_id, angle, sort, path) VALUES (?,?,?,?)', [$id, $angle, $next + $ok, 'uploads/cars/' . $file]);
+                        $ok++;
+                    }
+                }
+                if (!$ok) {
+                    throw new DomainException('Nenhuma foto enviada. Use PNG, WEBP ou JPG de ate 12 MB.');
+                }
+                flash('ok', "$ok foto(s) adicionada(s) ao {$car['model']}. Confira o angulo de cada uma.");
+            } elseif ($action === 'car_img_angle') {
+                $angle = in_array($_POST['angle'] ?? '', PV_ANGULOS, true) ? $_POST['angle'] : 'Lateral direita';
+                Database::run('UPDATE car_images SET angle = ?, sort = ? WHERE id = ? AND car_id = ?', [$angle, array_search($angle, PV_ANGULOS, true), (int) $_POST['img'], $id]);
+                flash('ok', 'Angulo atualizado.');
+            } elseif ($action === 'car_img_delete') {
+                $img = Database::one('SELECT * FROM car_images WHERE id = ? AND car_id = ?', [(int) $_POST['img'], $id]);
+                if ($img) {
+                    if (is_file(__DIR__ . '/../public/' . $img['path'])) {
+                        @unlink(__DIR__ . '/../public/' . $img['path']);
+                    }
+                    Database::run('DELETE FROM car_images WHERE id = ?', [$img['id']]);
+                }
+                flash('ok', 'Foto removida.');
+            } elseif ($action === 'car_img_wheels') {
+                $w = json_decode((string) ($_POST['wheels'] ?? ''), true);
+                if (!is_array($w) || !isset($w['list']) || !is_array($w['list']) || count($w['list']) > 4) {
+                    throw new DomainException('Posicao das rodas invalida.');
+                }
+                $clean = ['on' => !empty($w['on']), 'list' => array_map(fn ($r) => ['x' => (float) $r['x'], 'y' => (float) $r['y'], 'r' => (float) $r['r'], 'sq' => (float) ($r['sq'] ?? 1)], $w['list'])];
+                Database::run('UPDATE car_images SET wheels = ? WHERE id = ? AND car_id = ?', [json_encode($clean), (int) $_POST['img'], $id]);
+                header('Content-Type: application/json');
+                echo json_encode(['ok' => true]);
+                exit;
             }
-            $name = 'car-' . $id . '-' . time() . '.glb';
-            if (!move_uploaded_file($f['tmp_name'], $dir . '/' . $name)) {
-                throw new DomainException('Nao consegui salvar o arquivo.');
-            }
-            if ($car['glb_path'] && is_file(__DIR__ . '/../public/' . $car['glb_path'])) {
-                @unlink(__DIR__ . '/../public/' . $car['glb_path']);
-            }
-            Database::run('UPDATE car_models SET glb_path = ? WHERE id = ?', ['uploads/cars/' . $name, $id]);
-            flash('ok', 'Modelo 3D do ' . $car['model'] . ' enviado.');
-        } elseif ($_POST['action'] === 'car_glb_remove') {
-            if ($car['glb_path'] && is_file(__DIR__ . '/../public/' . $car['glb_path'])) {
-                @unlink(__DIR__ . '/../public/' . $car['glb_path']);
-            }
-            Database::run('UPDATE car_models SET glb_path = NULL WHERE id = ?', [$id]);
-            flash('ok', 'Modelo 3D removido: volta a usar o desenho do sistema.');
         }
     } catch (DomainException $ex) {
+        if ($pvAjax) {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => $ex->getMessage()]);
+            exit;
+        }
         flash('err', $ex->getMessage());
     }
-    redirect(url('provador', ['carro' => $id]));
+    redirect($back);
 }
-$cars = Database::all('SELECT * FROM car_models WHERE active = 1 ORDER BY body_type, brand, model');
+$cars = Database::all('SELECT * FROM car_models WHERE active = 1 ORDER BY brand, model');
+$imgs = [];
+foreach (Database::all('SELECT * FROM car_images ORDER BY car_id, sort, id') as $im) {
+    $imgs[(int) $im['car_id']][] = ['id' => (int) $im['id'], 'angulo' => $im['angle'], 'src' => $im['path'], 'rodas' => $im['wheels'] ? json_decode($im['wheels'], true) : null];
+}
 $carsJs = array_map(fn ($c) => [
-    'id' => (int) $c['id'], 'marca' => $c['brand'], 'modelo' => $c['model'], 'tipo' => $c['body_type'],
-    'L' => (int) $c['length_mm'], 'W' => (int) $c['width_mm'], 'H' => (int) $c['height_mm'], 'E' => (int) $c['wheelbase_mm'],
-    'pneu' => $c['tire'], 'glb' => $c['glb_path'],
+    'id' => (int) $c['id'], 'marca' => $c['brand'], 'modelo' => $c['model'], 'tipo' => $c['body_type'], 'pneu' => $c['tire'],
+    'fotos' => $imgs[(int) $c['id']] ?? [],
 ], $cars);
+$isAdmin = App\Auth::isAdmin();
 
 // Rodas do estoque com foto, para o cliente escolher pela referencia da loja
 $rodas = Database::all(
@@ -72,86 +127,20 @@ $rodasJs = array_map(fn ($r) => [
     'preco' => (float) $r['price'], 'estoque' => (int) $r['stock'], 'cond' => $r['condition_type'], 'img' => $r['image_path'],
 ], $rodas);
 ?>
-<section class="hero slim"><div><h1>Provador de rodas</h1><p>Escolha o carro do cliente na biblioteca (ou fotografe o carro dele) e mostre em 360° como fica com as nossas rodas.</p></div></section>
+<section class="hero slim"><div><h1>Provador de rodas</h1><p>Escolha o carro do cliente na biblioteca (ou fotografe o carro dele) e mostre na plataforma 360° como fica com as nossas rodas.</p></div></section>
 
-<div class="pv-tabs" role="tablist" aria-label="Modo do provador">
-  <button type="button" role="tab" id="pv-tab-3d" class="on" aria-selected="true">Carro 3D (biblioteca)</button>
-  <button type="button" role="tab" id="pv-tab-foto" aria-selected="false">Foto do cliente</button>
-</div>
-
-<div class="pv" id="p3">
-  <div class="pv-stage" id="p3-stage">
-    <canvas id="p3-c" aria-label="Carro em 3D. Arraste para girar 360 graus."></canvas>
-    <div class="pv-info p3-spec" id="p3-spec"></div>
-    <div class="pv-tools" id="p3-views">
-      <button class="chip on" type="button" data-v="auto">Girar 360°</button>
-      <button class="chip" type="button" data-v="tres">3/4 frente</button>
-      <button class="chip" type="button" data-v="lado">Lateral</button>
-      <button class="chip" type="button" data-v="tras">Traseira</button>
-      <button class="chip" type="button" data-v="roda">Roda de perto</button>
-    </div>
-    <div class="pv-busy" id="p3-busy" hidden><div class="pv-spin"></div><p id="p3-busy-t">Carregando...</p></div>
-  </div>
-  <aside class="pv-side">
-    <div class="card">
-      <h2>Carro do cliente</h2>
-      <input id="p3-q" type="search" placeholder="Buscar: HB20, Hilux, BYD, SUV..." aria-label="Buscar carro" style="margin-top:10px">
-      <select id="p3-car" aria-label="Carro" style="margin-top:8px"></select>
-      <div class="p3-cores" id="p3-cores" role="group" aria-label="Cor"></div>
-      <p class="small muted" id="p3-car-t" style="margin:8px 0 0"></p>
-      <?php if (App\Auth::isAdmin()): ?>
-      <details class="p3-admin"><summary class="small">Corrigir medidas / modelo 3D real</summary>
-        <form method="post" class="stack" id="p3-edit" style="margin-top:8px"><?= App\Csrf::field() ?><input type="hidden" name="action" value="car_edit"><input type="hidden" name="id" value="">
-          <div class="row c2"><label class="birth"><span>Comprimento (mm)</span><input name="length_mm" type="number"></label><label class="birth"><span>Largura (mm)</span><input name="width_mm" type="number"></label></div>
-          <div class="row c2"><label class="birth"><span>Altura (mm)</span><input name="height_mm" type="number"></label><label class="birth"><span>Entre-eixos (mm)</span><input name="wheelbase_mm" type="number"></label></div>
-          <label class="birth"><span>Pneu original</span><input name="tire" placeholder="185/60 R15"></label>
-          <button class="btn sm" type="submit">Salvar medidas</button>
-        </form>
-        <form method="post" enctype="multipart/form-data" class="stack" id="p3-glb" style="margin-top:12px"><?= App\Csrf::field() ?><input type="hidden" name="action" value="car_glb"><input type="hidden" name="id" value="">
-          <label class="birth"><span>Modelo 3D real do carro (.glb, até 45 MB)</span><input type="file" name="glb" accept=".glb,model/gltf-binary" required></label>
-          <button class="btn sm" type="submit">Enviar modelo 3D</button>
-        </form>
-        <form method="post" id="p3-glb-rm" style="margin-top:6px" hidden><?= App\Csrf::field() ?><input type="hidden" name="action" value="car_glb_remove"><input type="hidden" name="id" value=""><button class="linklike danger-t" type="submit">remover modelo 3D</button></form>
-        <p class="small muted" style="margin:8px 0 0">Modelos 3D gratuitos (.glb) podem ser baixados em sites como o Sketchfab (filtro "downloadable", licença CC). O sistema acerta o tamanho pelas medidas acima e troca as rodas dele pelas nossas.</p>
-      </details>
-      <?php endif; ?>
-    </div>
-    <div class="card">
-      <h2>Aro</h2>
-      <div class="pv-opts" id="p3-aros"></div>
-      <p class="small muted" id="p3-aro-t" style="margin:8px 0 0"></p>
-    </div>
-    <div class="card">
-      <h2>Roda escolhida</h2>
-      <input id="p3-rq" type="search" placeholder="Buscar roda do estoque" aria-label="Buscar roda do estoque" style="margin-top:10px">
-      <div class="pv-rodas" id="p3-rodas"></div>
-      <div class="pv-opts c2" id="p3-sys" style="margin-top:10px"></div>
-      <div class="pv-opts c2" id="p3-acab" style="margin-top:6px"></div>
-    </div>
-    <div class="card">
-      <h2>Comparar</h2>
-      <div class="pv-ab"><button type="button" id="p3-a" class="on"><b>A</b><span id="p3-a-t">-</span></button><button type="button" id="p3-b"><b>B</b><span id="p3-b-t">-</span></button></div>
-      <button class="chip" type="button" id="p3-alt" style="margin-top:8px;width:100%">Alternar A e B</button>
-      <div class="lbl" style="display:flex;justify-content:space-between;margin-top:12px"><span class="small">Rebaixamento</span><span class="small" id="p3-rb-t">original</span></div>
-      <input type="range" id="p3-rb" min="0" max="80" step="5" value="0" aria-label="Rebaixamento em milimetros" style="width:100%">
-    </div>
-  </aside>
-</div>
-
-<div class="pv" id="pv" hidden>
+<div class="pv" id="pv">
   <div class="pv-stage" id="pv-stage">
-    <canvas id="pv-c" aria-label="Carro do cliente na plataforma com a roda simulada"></canvas>
+    <canvas id="pv-c" aria-label="Carro na plataforma com a roda simulada. Arraste para girar."></canvas>
     <video id="pv-video" playsinline muted hidden></video>
     <div class="pv-guide" id="pv-guide" hidden><div class="pv-frame"></div><p id="pv-guide-t">Enquadre o carro de lado, com as duas rodas aparecendo</p></div>
-    <div class="pv-busy" id="pv-busy" hidden><div class="pv-spin"></div><p id="pv-busy-t">Removendo o fundo...</p></div>
+    <div class="pv-busy" id="pv-busy" hidden><div class="pv-spin"></div><p id="pv-busy-t">Carregando...</p></div>
     <div class="pv-empty" id="pv-empty">
-      <h2>Carro do cliente na plataforma</h2>
-      <p>Abra a câmera e fotografe o carro de lado. Para o giro de 360°, tire uma foto de cada ângulo andando em volta do carro.</p>
+      <h2>Escolha o carro do cliente</h2>
+      <p>Selecione o modelo na biblioteca ao lado, ou fotografe o carro do cliente.</p>
       <div class="pv-row">
-        <button class="btn green" type="button" data-cam="1">Foto única</button>
-        <button class="btn" type="button" data-cam="8">Giro 360° (8 fotos)</button>
+        <button class="btn green" type="button" data-cam="1">Fotografar carro do cliente</button>
       </div>
-      <label class="small" for="pv-file" style="cursor:pointer;text-decoration:underline">ou escolher fotos do aparelho</label>
     </div>
     <div class="pv-shoot" id="pv-shoot" hidden>
       <button class="btn ghost" type="button" id="pv-cancel">Fechar câmera</button>
@@ -159,10 +148,11 @@ $rodasJs = array_map(fn ($r) => [
       <button class="btn ghost" type="button" id="pv-done" hidden>Concluir</button>
     </div>
     <div class="pv-tools" id="pv-tools" hidden>
-      <button class="chip on" type="button" id="pv-depois">Depois</button>
-      <button class="chip" type="button" id="pv-antes">Antes</button>
-      <button class="chip" type="button" id="pv-girar" hidden>Girar 360°</button>
+      <button class="chip on" type="button" id="pv-girar">Girar 360°</button>
+      <button class="chip on" type="button" id="pv-depois">Com a roda nova</button>
+      <button class="chip" type="button" id="pv-antes">Original</button>
       <button class="chip" type="button" id="pv-ajustar">Ajustar rodas</button>
+      <?php if ($isAdmin): ?><button class="chip" type="button" id="pv-salvar-rodas" hidden>Salvar posição das rodas</button><?php endif; ?>
       <button class="chip" type="button" id="pv-save">Gerar imagem</button>
     </div>
     <div class="pv-info" id="pv-info" hidden></div>
@@ -170,14 +160,34 @@ $rodasJs = array_map(fn ($r) => [
 
   <aside class="pv-side">
     <div class="card">
-      <h2>Foto do carro</h2>
-      <div class="pv-row" style="margin-top:10px">
-        <button class="btn green sm" type="button" data-cam="1">Câmera: foto única</button>
-        <button class="btn sm" type="button" data-cam="8">Câmera: giro 360°</button>
-      </div>
+      <h2>Carro</h2>
+      <input id="pv-cq" type="search" placeholder="Buscar: HB20, Gol, Compass, Hilux..." aria-label="Buscar carro" style="margin-top:10px">
+      <div class="pv-cars" id="pv-cars"></div>
+      <p class="small muted" style="margin:8px 0 0">Ou <button type="button" class="linklike" data-cam="1">fotografar o carro do cliente</button> · <button type="button" class="linklike" data-cam="8">giro com 8 fotos</button> · <label for="pv-file" class="linklike" style="cursor:pointer">escolher fotos</label></p>
       <input type="file" id="pv-file" accept="image/*" capture="environment" multiple class="pv-file">
-      <p class="small muted" id="pv-model-t" style="margin:10px 0 0">A remoção do fundo roda no próprio aparelho (sem custo e sem enviar a foto para fora). Na primeira vez baixa um arquivo de 4,5 MB.</p>
       <div class="pv-frames" id="pv-frames"></div>
+      <?php if ($isAdmin): ?>
+      <details class="p3-admin" id="pv-admin"><summary class="small">Biblioteca: fotos e cadastro de carros</summary>
+        <div id="pv-admin-car" hidden>
+          <form method="post" enctype="multipart/form-data" class="stack" style="margin-top:10px"><?= App\Csrf::field() ?><input type="hidden" name="action" value="car_img_upload"><input type="hidden" name="id" class="pv-car-id">
+            <label class="birth"><span>Adicionar fotos PNG sem fundo de <b class="pv-car-nome"></b> (pode escolher várias, na ordem do giro)</span><input type="file" name="imgs[]" accept="image/png,image/webp,image/jpeg" multiple required></label>
+            <button class="btn sm" type="submit">Enviar fotos</button>
+          </form>
+          <div class="pv-admin-imgs" id="pv-admin-imgs"></div>
+          <form method="post" class="stack" style="margin-top:10px" id="pv-car-edit"><?= App\Csrf::field() ?><input type="hidden" name="action" value="car_edit"><input type="hidden" name="id" class="pv-car-id">
+            <div class="row c2"><input name="brand" placeholder="Marca" aria-label="Marca"><input name="model" placeholder="Modelo" aria-label="Modelo"></div>
+            <label class="birth"><span>Pneu original (define os pneus de cada aro)</span><input name="tire" placeholder="185/60 R15"></label>
+            <button class="btn ghost sm" type="submit">Salvar dados do carro</button>
+          </form>
+        </div>
+        <form method="post" class="stack" style="margin-top:14px;border-top:1px dashed var(--line,#e5e7eb);padding-top:10px"><?= App\Csrf::field() ?><input type="hidden" name="action" value="car_new">
+          <b class="small">Cadastrar carro novo</b>
+          <div class="row c2"><input name="brand" placeholder="Marca (ex.: Hyundai)" required aria-label="Marca"><input name="model" placeholder="Modelo (ex.: HB20)" required aria-label="Modelo"></div>
+          <div class="row c2"><select name="body_type" aria-label="Tipo"><option value="hatch">Hatch</option><option value="sedan">Sedã</option><option value="suv">SUV</option><option value="picape">Picape</option></select><input name="tire" placeholder="Pneu original 185/60 R15" required aria-label="Pneu original"></div>
+          <button class="btn sm" type="submit">Cadastrar</button>
+        </form>
+      </details>
+      <?php endif; ?>
     </div>
 
     <div class="card">
@@ -209,12 +219,7 @@ $rodasJs = array_map(fn ($r) => [
     <button class="btn" type="button" id="pv-out-x">Fechar</button></div>
 </div>
 
-<script>window.PV_CARS = <?= json_encode($carsJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>; window.PV_CAR_SEL = <?= (int) ($_GET['carro'] ?? 0) ?>;</script>
+<script>window.PV_CARS = <?= json_encode($carsJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>; window.PV_CAR_SEL = <?= (int) ($_GET['carro'] ?? 0) ?>; window.PV_ANGULOS = <?= json_encode(PV_ANGULOS, JSON_UNESCAPED_UNICODE) ?>; window.PV_CSRF = <?= json_encode(App\Csrf::token()) ?>; window.PV_ADMIN = <?= $isAdmin ? 'true' : 'false' ?>;</script>
 <script>window.PV_RODAS = <?= json_encode($rodasJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>;</script>
 <script src="vendor/ort/ort.wasm.min.js"></script>
 <script src="<?= e(asset('provador.js')) ?>"></script>
-<script src="vendor/three/three.min.js"></script>
-<script src="vendor/three/OrbitControls.js"></script>
-<script src="vendor/three/RoomEnvironment.js"></script>
-<script src="vendor/three/GLTFLoader.js"></script>
-<script src="<?= e(asset('provador3d.js')) ?>"></script>
