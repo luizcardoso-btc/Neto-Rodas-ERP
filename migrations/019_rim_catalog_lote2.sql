@@ -1,0 +1,22 @@
+-- Segundo lote do catalogo do provador: 4 rodas aro 14 e 16 aro 15
+INSERT IGNORE INTO rim_catalog (name, brand, rim, path) VALUES
+('RODA FIAT MOBI', 'FIAT', 14, 'rodas/fiat-mobi-aro14.webp'),
+('RODA STRADA 2015', 'FIAT', 14, 'rodas/strada-2015-aro14.webp'),
+('RODA POLO 2020', 'VOLKSWAGEN', 14, 'rodas/polo-2020-aro14.webp'),
+('RODA JETTA 2025', 'VOLKSWAGEN', 14, 'rodas/jetta-2025-aro14.webp'),
+('RODA HB20 2026 GRAFITE DIAMANTE', 'HYUNDAI', 15, 'rodas/hb20-2026-grafite-diamante-aro15.webp'),
+('RODA HB20 2026 DIAMANTE PRETO', 'HYUNDAI', 15, 'rodas/hb20-2026-diamante-preto-aro15.webp'),
+('RODA VOLCANO GRAFITE', 'VOLCANO', 15, 'rodas/volcano-grafite-aro15.webp'),
+('RODA ONIX PREMIER 2026 GRAFITE', 'CHEVROLET', 15, 'rodas/onix-premier-2026-grafite-aro15.webp'),
+('RODA VOLCANO DIAMANTE PRETO', 'VOLCANO', 15, 'rodas/volcano-diamante-preto-aro15.webp'),
+('RODA GOLF BROOKLYN', 'VOLKSWAGEN', 15, 'rodas/golf-brooklyn-aro15.webp'),
+('RODA GOL G6 PALITO', 'VOLKSWAGEN', 15, 'rodas/gol-g6-palito-aro15.webp'),
+('RODA VW TERA DIAMANTE FUME', 'VOLKSWAGEN', 15, 'rodas/tera-diamante-fume-aro15.webp'),
+('RODA VW TERA DIAMANTE COMUM', 'VOLKSWAGEN', 15, 'rodas/tera-diamante-comum-aro15.webp'),
+('RODA VW JETTA VENETTO', 'VOLKSWAGEN', 15, 'rodas/jetta-venetto-aro15.webp'),
+('RODA MONTANA 2025 COM EMBLEMA VW', 'VOLKSWAGEN', 15, 'rodas/montana-2025-emblema-vw-aro15.webp'),
+('RODA VW VIRTUS TSI 2026', 'VOLKSWAGEN', 15, 'rodas/virtus-tsi-2026-aro15.webp'),
+('RODA TARANTULA', 'VOLKSWAGEN', 15, 'rodas/tarantula-aro15.webp'),
+('RODA VW VIRTUS EXCLUSIVE', 'VOLKSWAGEN', 15, 'rodas/virtus-exclusive-aro15.webp'),
+('RODA VW SAVEIRO XTREME', 'VOLKSWAGEN', 15, 'rodas/saveiro-xtreme-aro15.webp'),
+('RODA FIAT CRONOS COM EMBLEMA VW', 'VOLKSWAGEN', 15, 'rodas/cronos-emblema-vw-aro15.webp')
