@@ -6,7 +6,7 @@ RUN docker-php-ext-install pdo_mysql \
 
 RUN printf '%s\n' 'ServerTokens Prod' 'ServerSignature Off' 'ServerName localhost' '<Directory /var/www/html/public/uploads>' '    <FilesMatch "\.(php|phtml|phar)$">' '        Require all denied' '    </FilesMatch>' '    Options -Indexes' '</Directory>' '<FilesMatch "^\.">' '    Require all denied' '</FilesMatch>' > /etc/apache2/conf-available/erp.conf
 RUN a2enconf erp
-RUN printf '%s\n' 'display_errors=Off' 'log_errors=On' 'error_log=/dev/stderr' 'upload_max_filesize=4M' 'post_max_size=8M' 'date.timezone=America/Bahia' > /usr/local/etc/php/conf.d/erp.ini
+RUN printf '%s\n' 'display_errors=Off' 'log_errors=On' 'error_log=/dev/stderr' 'upload_max_filesize=48M' 'post_max_size=50M' 'date.timezone=America/Bahia' > /usr/local/etc/php/conf.d/erp.ini
 
 WORKDIR /var/www/html
 COPY . /var/www/html/

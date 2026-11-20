@@ -465,4 +465,5 @@
 
   renderRodas(''); syncBtns(); requestAnimationFrame(loop);
   window.__PV = S; // usado nos testes
+  window.PVAPI = { prepareRim, rimImages, loadImg, toCanvas };
 })();
