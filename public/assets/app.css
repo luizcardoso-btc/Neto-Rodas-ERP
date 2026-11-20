@@ -446,16 +446,7 @@ td.actions{white-space:normal;min-width:150px}
 .pv-aimg img{width:64px;height:40px;object-fit:contain;background:#1a1a18;border-radius:6px}
 .pv-aimg form{margin:0}
 .pv-aimg select{width:100%}
-/* provador: carros de clientes e cor */
-.pv-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:10px;background:var(--line,#eef0f2);border-radius:12px;padding:4px}
-.pv-seg button{border:0;background:transparent;border-radius:9px;padding:8px 6px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;color:inherit}
-.pv-seg button.on{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.12)}
-.pv-seg b{font-weight:500;opacity:.7}
-.pv-savecar,.pv-clientinfo{margin-top:12px;border:1px solid #f5b800;background:#fffbea;border-radius:14px;padding:12px;gap:8px}
-.pv-savecar input{text-transform:none}
-.pv-clientinfo{display:grid;gap:3px;font-size:13px}
-.pv-clientinfo .pv-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.pv-clientinfo a.chip{text-decoration:none}
+/* provador: cores */
 .pv-cores{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px;margin-top:10px}
 .pv-cor{display:grid;justify-items:center;gap:3px;border:1px solid var(--line,#e5e7eb);background:transparent;border-radius:10px;padding:6px 2px;cursor:pointer;font:inherit;color:inherit}
 .pv-cor i{width:26px;height:26px;border-radius:50%;border:1px solid rgba(0,0,0,.18);display:block}

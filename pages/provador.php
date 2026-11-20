@@ -3,25 +3,9 @@ use App\Database;
 
 // Biblioteca de carros: fotos PNG sem fundo por angulo. Admin cadastra carros, envia fotos e salva a posicao das rodas.
 const PV_ANGULOS = ['Lateral direita', '3/4 traseira direita', 'Traseira', '3/4 traseira esquerda', 'Lateral esquerda', '3/4 frente esquerda', 'Frente', '3/4 frente direita'];
-// Foto do carro do cliente: fica no banco (nao se perde quando o sistema atualiza)
-if (isset($_GET['cimg'])) {
-    $im = App\CustomerCars::image((int) $_GET['cimg']);
-    while (ob_get_level()) {
-        ob_end_clean();
-    }
-    if (!$im) {
-        http_response_code(404);
-        exit;
-    }
-    header('Content-Type: ' . $im['mime']);
-    header('Cache-Control: private, max-age=31536000, immutable');
-    echo $im['data'];
-    exit;
-}
-
 // Chamadas do provador feitas pela pagina (respondem JSON ou a imagem recortada)
 $pvAct = (string) ($_POST['action'] ?? '');
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($pvAct, ['cutout', 'cust_save', 'cust_update', 'cust_wheels', 'cust_delete'], true)) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pvAct === 'cutout') {
     $pvJson = function (array $a, int $code = 200): never {
         while (ob_get_level()) {
             ob_end_clean();
@@ -57,41 +41,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($pvAct, ['cutout', 'cust_s
             readfile($out);
             @unlink($out);
             exit;
-        }
-        if ($pvAct === 'cust_save') {
-            $images = [];
-            $files = $_FILES['imgs'] ?? ['name' => []];
-            foreach ((array) $files['name'] as $i => $n) {
-                if (($files['error'][$i] ?? 1) !== UPLOAD_ERR_OK) {
-                    continue;
-                }
-                $info = @getimagesize($files['tmp_name'][$i]);
-                $images[] = [
-                    'data' => (string) file_get_contents($files['tmp_name'][$i]), 'mime' => $info['mime'] ?? '',
-                    'angle' => (string) ($_POST['angles'][$i] ?? 'Lateral direita'),
-                    'wheels' => json_decode((string) ($_POST['wheels'][$i] ?? ''), true) ?: null,
-                ];
-            }
-            $id = App\CustomerCars::create($_POST, $images, (int) (App\Auth::user()['id'] ?? 0) ?: null);
-            $car = array_values(array_filter(App\CustomerCars::all(), fn ($c) => $c['cid'] === $id))[0] ?? null;
-            $pvJson(['ok' => true, 'car' => $car]);
-        }
-        $cid = (int) ($_POST['id'] ?? 0);
-        if ($pvAct === 'cust_update') {
-            App\CustomerCars::update($cid, $_POST);
-            $car = array_values(array_filter(App\CustomerCars::all(), fn ($c) => $c['cid'] === $cid))[0] ?? null;
-            $pvJson(['ok' => true, 'car' => $car]);
-        }
-        if ($pvAct === 'cust_wheels') {
-            App\CustomerCars::setWheels($cid, (int) ($_POST['img'] ?? 0), json_decode((string) ($_POST['wheels'] ?? ''), true) ?: []);
-            $pvJson(['ok' => true]);
-        }
-        if ($pvAct === 'cust_delete') {
-            if (!App\Auth::isAdmin()) {
-                throw new DomainException('Somente o administrador pode apagar carros de clientes.');
-            }
-            App\CustomerCars::delete($cid);
-            $pvJson(['ok' => true]);
         }
     } catch (DomainException $ex) {
         $pvJson(['ok' => false, 'error' => $ex->getMessage()], 422);
@@ -210,7 +159,6 @@ $carsJs = array_map(fn ($c) => [
     'fotos' => $imgs[(int) $c['id']] ?? [],
 ], $cars);
 $isAdmin = App\Auth::isAdmin();
-$clientCarsJs = App\CustomerCars::all();
 
 // Rodas do estoque com foto, para o cliente escolher pela referencia da loja
 $rodas = Database::all(
@@ -230,32 +178,21 @@ foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1
     ]);
 }
 ?>
-<section class="hero slim"><div><h1>Provador de rodas</h1><p>Escolha o carro do cliente na biblioteca (ou fotografe o carro dele) e mostre na plataforma 360° como fica com as nossas rodas.</p></div></section>
+<section class="hero slim"><div><h1>Provador de rodas</h1><p>Escolha o carro, a roda e a cor, e apresente para o cliente na plataforma.</p></div></section>
 
 <div class="pv" id="pv">
   <div class="pv-stage" id="pv-stage">
-    <canvas id="pv-c" aria-label="Carro na plataforma com a roda simulada. Arraste para girar."></canvas>
-    <video id="pv-video" playsinline muted hidden></video>
-    <div class="pv-guide" id="pv-guide" hidden><div class="pv-frame"></div><p id="pv-guide-t">Enquadre o carro de lado, com as duas rodas aparecendo</p></div>
+    <canvas id="pv-c" aria-label="Apresentação do carro com a roda escolhida. Arraste para girar."></canvas>
     <div class="pv-busy" id="pv-busy" hidden><div class="pv-spin"></div><p id="pv-busy-t">Carregando...</p></div>
     <div class="pv-empty" id="pv-empty">
-      <h2>Escolha o carro do cliente</h2>
-      <p>Selecione o modelo na biblioteca ao lado, ou fotografe o carro do cliente.</p>
-      <div class="pv-row">
-        <button class="btn green" type="button" data-cam="1">Fotografar carro do cliente</button>
-      </div>
-    </div>
-    <div class="pv-shoot" id="pv-shoot" hidden>
-      <button class="btn ghost" type="button" id="pv-cancel">Fechar câmera</button>
-      <button class="pv-shutter" type="button" id="pv-snap" aria-label="Fotografar"></button>
-      <button class="btn ghost" type="button" id="pv-done" hidden>Concluir</button>
+      <h2>Escolha o carro</h2>
+      <p>Selecione o modelo ao lado. Depois escolha a roda e a cor.</p>
     </div>
     <div class="pv-tools" id="pv-tools" hidden>
-      <button class="chip on" type="button" id="pv-girar">Girar 360°</button>
-      <button class="chip on" type="button" id="pv-depois">Com a roda nova</button>
-      <button class="chip" type="button" id="pv-antes">Original</button>
-      <button class="chip" type="button" id="pv-ajustar">Ajustar rodas</button>
-      <button class="chip" type="button" id="pv-salvar-rodas" hidden>Salvar posição das rodas</button>
+      <button class="chip on" type="button" id="pv-play">Apresentação</button>
+      <button class="chip" type="button" id="pv-antes">Antes</button>
+      <?php if ($isAdmin): ?><button class="chip" type="button" id="pv-ajustar">Ajustar rodas</button>
+      <button class="chip" type="button" id="pv-salvar-rodas" hidden>Salvar posição das rodas</button><?php endif; ?>
       <button class="chip" type="button" id="pv-save">Gerar imagem</button>
     </div>
     <div class="pv-info" id="pv-info" hidden></div>
@@ -264,23 +201,8 @@ foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1
   <aside class="pv-side">
     <div class="card">
       <h2>Carro</h2>
-      <div class="pv-seg" id="pv-cseg" role="tablist"><button type="button" data-v="modelos" class="on">Modelos</button><button type="button" data-v="clientes">Carros de clientes <b id="pv-ccount"></b></button></div>
-      <input id="pv-cq" type="search" placeholder="Buscar: HB20, Gol, Compass, Hilux..." aria-label="Buscar carro" style="margin-top:8px">
+      <input id="pv-cq" type="search" placeholder="Buscar: HB20, Gol, Compass, Hilux..." aria-label="Buscar carro" style="margin-top:10px">
       <div class="pv-cars" id="pv-cars"></div>
-      <p class="small muted" style="margin:8px 0 0">Ou <button type="button" class="linklike" data-cam="1">fotografar o carro do cliente</button> · <button type="button" class="linklike" data-cam="8">giro com 8 fotos</button> · <label for="pv-file" class="linklike" style="cursor:pointer">escolher fotos</label></p>
-      <input type="file" id="pv-file" accept="image/*" capture="environment" multiple class="pv-file">
-      <div class="pv-frames" id="pv-frames"></div>
-      <div class="pv-clientinfo" id="pv-clientinfo" hidden></div>
-      <form class="pv-savecar stack" id="pv-savecar" hidden autocomplete="off">
-        <b>Salvar carro do cliente</b>
-        <p class="small muted" style="margin:0">Fica no banco de carros, com a foto já sem fundo, para a próxima venda.</p>
-        <div class="row c2"><input name="owner_name" placeholder="Nome do cliente" aria-label="Nome do cliente"><input name="phone" placeholder="WhatsApp" inputmode="tel" aria-label="WhatsApp"></div>
-        <div class="row c2"><input name="brand" placeholder="Marca" required aria-label="Marca" list="pv-marcas"><input name="model" placeholder="Modelo" required aria-label="Modelo" list="pv-modelos"></div>
-        <div class="row c2"><input name="color" placeholder="Cor" aria-label="Cor"><input name="plate" placeholder="Placa" aria-label="Placa" style="text-transform:uppercase"></div>
-        <input name="tire" placeholder="Pneu atual (ex.: 185/60 R15)" aria-label="Pneu atual">
-        <button class="btn green sm" type="submit">Salvar carro</button>
-      </form>
-      <datalist id="pv-marcas"></datalist><datalist id="pv-modelos"></datalist>
       <?php if ($isAdmin): ?>
       <details class="p3-admin" id="pv-admin"><summary class="small">Biblioteca: fotos e cadastro de carros</summary>
         <div id="pv-admin-car" hidden>
@@ -306,9 +228,9 @@ foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1
     </div>
 
     <div class="card">
-      <h2>Cor do carro</h2>
-      <div class="pv-cores" id="pv-cores"></div>
-      <p class="small muted" style="margin:8px 0 0">Simulação de pintura: mostra o carro do cliente em outra cor. Funciona melhor em carros claros.</p>
+      <h2>Roda</h2>
+      <input id="pv-q" type="search" placeholder="Buscar roda (nome, marca, aro)" aria-label="Buscar roda" style="margin-top:10px">
+      <div class="pv-rodas" id="pv-rodas"></div>
     </div>
 
     <div class="card">
@@ -318,18 +240,8 @@ foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1
     </div>
 
     <div class="card">
-      <h2>Roda escolhida</h2>
-      <input id="pv-q" type="search" placeholder="Buscar roda do estoque (nome, marca, aro)" aria-label="Buscar roda do estoque" style="margin-top:10px">
-      <div class="pv-rodas" id="pv-rodas"></div>
-      <p class="small muted" style="margin:8px 0 0">Aparecem as rodas do estoque que têm foto. Sem foto? <label for="pv-rimfile" style="cursor:pointer;text-decoration:underline">use uma foto da roda</label> ou um desenho abaixo.</p>
-      <input type="file" id="pv-rimfile" accept="image/*" capture="environment" class="pv-file">
-      <div class="pv-opts c2" id="pv-sys" style="margin-top:10px"></div>
-    </div>
-
-    <div class="card">
-      <h2>Comparar</h2>
-      <div class="pv-ab"><button type="button" id="pv-a" class="on"><b>A</b><span id="pv-a-t">-</span></button><button type="button" id="pv-b"><b>B</b><span id="pv-b-t">-</span></button></div>
-      <button class="chip" type="button" id="pv-alt" style="margin-top:8px;width:100%">Alternar A e B</button>
+      <h2>Cor do carro</h2>
+      <div class="pv-cores" id="pv-cores"></div>
     </div>
   </aside>
 </div>
@@ -340,7 +252,7 @@ foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1
     <button class="btn" type="button" id="pv-out-x">Fechar</button></div>
 </div>
 
-<script>window.PV_CLIENT_CARS = <?= json_encode($clientCarsJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>; window.PV_CARS = <?= json_encode($carsJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>; window.PV_CAR_SEL = <?= (int) ($_GET['carro'] ?? 0) ?>; window.PV_ANGULOS = <?= json_encode(PV_ANGULOS, JSON_UNESCAPED_UNICODE) ?>; window.PV_CSRF = <?= json_encode(App\Csrf::token()) ?>; window.PV_ADMIN = <?= $isAdmin ? 'true' : 'false' ?>;</script>
+<script>window.PV_CARS = <?= json_encode($carsJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>; window.PV_CAR_SEL = <?= (int) ($_GET['carro'] ?? 0) ?>; window.PV_ANGULOS = <?= json_encode(PV_ANGULOS, JSON_UNESCAPED_UNICODE) ?>; window.PV_CSRF = <?= json_encode(App\Csrf::token()) ?>; window.PV_ADMIN = <?= $isAdmin ? 'true' : 'false' ?>;</script>
 <script>window.PV_RODAS = <?= json_encode($rodasJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>;</script>
 <script src="vendor/ort/ort.wasm.min.js"></script>
 <script src="<?= e(asset('provador.js')) ?>"></script>
