@@ -533,7 +533,8 @@
   }
   $('pv-cq').oninput = renderCars;
   async function loadCar(c) {
-    S.car = c; S.paint = null; S.sets = null; S.realColor = null; S.adjust = false; renderCars(); renderAros(); adminCar(); renderCores();
+    S.car = c; S.paint = null; S.sets = null; S.realColor = null; S.adjust = false;
+    { const r = aroRange(), ra = S.roda && +S.roda.aro; S.aro = ra && r.includes(ra) ? ra : parseTire(c.pneu).a; } renderCars(); renderAros(); adminCar(); renderCores();
     const fotos = carFotos(c);
     if (!fotos.length) {
       S.frames = []; $('pv-tools').hidden = true; $('pv-empty').hidden = false;
