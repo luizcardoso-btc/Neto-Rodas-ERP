@@ -1,0 +1,22 @@
+-- Terceiro lote do catalogo do provador: 20 rodas aro 15
+INSERT IGNORE INTO rim_catalog (name, brand, rim, path) VALUES
+('RODA VW CHIARA', 'KR', 15, 'rodas/vw-chiara-aro15.webp'),
+('RODA FIAT CRONOS 2022 1.8 DIAMANTE GRAFITE', 'FIAT', 15, 'rodas/cronos-2022-1-8-diamante-grafite-aro15.webp'),
+('RODA FIAT CRONOS 2026', 'FIAT', 15, 'rodas/cronos-2026-aro15.webp'),
+('RODA FIAT ARGO 2025 GRAFITE', 'FIAT', 15, 'rodas/argo-2025-grafite-aro15.webp'),
+('RODA FIAT FASTBACK 2025 GRAFITE DIAMANTE', 'FIAT', 15, 'rodas/fastback-2025-grafite-diamante-aro15.webp'),
+('RODA FIAT CRONOS 1.8 2022 DIAMANTE PRETO', 'FIAT', 15, 'rodas/cronos-1-8-2022-diamante-preto-aro15.webp'),
+('RODA FIAT STRADA 2026', 'FIAT', 15, 'rodas/strada-2026-aro15.webp'),
+('RODA ONIX PREMIER 2026', 'CHEVROLET', 15, 'rodas/onix-premier-2026-aro15.webp'),
+('RODA MONTANA 2025 EMBLEMA GM', 'CHEVROLET', 15, 'rodas/montana-2025-emblema-gm-aro15.webp'),
+('RODA ONIX 2015', 'CHEVROLET', 15, 'rodas/onix-2015-aro15.webp'),
+('RODA VOLCANO PRATA', 'VOLCANO', 15, 'rodas/volcano-prata-aro15.webp'),
+('RODA VOLCANO DIAMANTE GRAFITE', 'VOLCANO', 15, 'rodas/volcano-diamante-grafite-aro15.webp'),
+('RODA ONIX PREMIER 2024', 'CHEVROLET', 15, 'rodas/onix-premier-2024-aro15.webp'),
+('RODA ONIX 2018', 'CHEVROLET', 15, 'rodas/onix-2018-aro15.webp'),
+('RODA TARANTULA EMBLEMA SCORRO', 'SCORRO', 15, 'rodas/tarantula-emblema-scorro-aro15.webp'),
+('RODA VW VIRTUS EXCLUSIVE 2024 5X100', 'VOLKSWAGEN', 15, 'rodas/virtus-exclusive-2024-5x100-aro15.webp'),
+('RODA YARIS 2025', 'TOYOTA', 15, 'rodas/yaris-2025-aro15.webp'),
+('RODA R-SEVEN SCORRO', 'SCORRO', 15, 'rodas/r-seven-scorro-aro15.webp'),
+('RODA POLO GTS 2025 4X100', 'VOLKSWAGEN', 15, 'rodas/polo-gts-2025-4x100-aro15.webp'),
+('RODA VOYAGE G8 2022', 'VOLKSWAGEN', 15, 'rodas/voyage-g8-2022-aro15.webp')
