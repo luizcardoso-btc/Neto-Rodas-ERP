@@ -188,8 +188,16 @@ final class SaleServiceTest extends TestCase
     public function testPdvCustomerRequiredFields(): void
     {
         $this->expectException(DomainException::class);
-        $this->expectExceptionMessageMatches('/CPF.*TELEFONE.*CARRO/s');
+        $this->expectExceptionMessageMatches('/TELEFONE.*CARRO/s');
         SaleService::assertPdvCustomer(['first_name' => 'ANA', 'email' => 'ANA@X.COM']);
+    }
+
+    public function testPdvCustomerTaxIdIsOptionalButMustBeCompleteIfFilled(): void
+    {
+        SaleService::assertPdvCustomer(['first_name' => 'ANA', 'phone' => '75999998888', 'car' => 'ONIX']);
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessageMatches('/CPF\/CNPJ/');
+        SaleService::assertPdvCustomer(['first_name' => 'ANA', 'phone' => '75999998888', 'car' => 'ONIX', 'tax_id' => '123']);
     }
 
     public function testPdvCustomerZipIsNeverRequired(): void
