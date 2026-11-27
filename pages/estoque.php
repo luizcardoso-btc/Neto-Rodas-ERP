@@ -33,7 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $condW = in_array($_POST['condition_type'] ?? '', ['usado', 'atacado'], true) ? $_POST['condition_type'] : 'novo';
                 $usedW = $condW === 'atacado' ? 'atacado' : $condW === 'usado';
                 $w = App\Wheel::normalize((string) ($_POST['wheel_brand'] ?? ''), (string) ($_POST['wheel_rim'] ?? ''), (string) ($_POST['wheel_finish'] ?? ''), $usedW);
-                $dup = Database::value('SELECT id FROM products WHERE name = ? AND condition_type = ? AND id <> ? AND active = 1 LIMIT 1', [$w['name'], $condW, $id]);
+                $linked = $id ? Database::one('SELECT p.rim_catalog_id, c.name FROM products p JOIN rim_catalog c ON c.id = p.rim_catalog_id WHERE p.id = ?', [$id]) : null;
+                if ($linked) { // roda com nome do provador: mantem o nome do catalogo (com o aro e a condicao atuais)
+                    $w['name'] = App\RimNames::stockName($linked['name'], (int) $w['rim'], $condW);
+                }
+                $dup = $linked ? null : Database::value('SELECT id FROM products WHERE name = ? AND condition_type = ? AND id <> ? AND active = 1 LIMIT 1', [$w['name'], $condW, $id]);
                 if ($dup) {
                     throw new DomainException('Este jogo ja esta cadastrado (' . $w['name'] . '). Use o Ajuste de estoque para somar jogos.');
                 }
@@ -81,6 +85,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 flash('ok', 'Produto cadastrado.');
             }
+        } elseif ($action === 'rim_names') {
+            if (!App\Auth::isAdmin()) {
+                throw new DomainException('Somente o administrador pode renomear as rodas.');
+            }
+            $n = App\RimNames::apply(array_filter((array) ($_POST['link'] ?? []), fn ($v) => $v !== ''));
+            flash('ok', "$n roda(s) atualizada(s) com o nome do provador. Preco e estoque nao mudaram.");
+            redirect(url('estoque', ['rodas_nomes' => 1]));
         } elseif ($action === 'adjust') {
             $pid = (int) ($_POST['product_id'] ?? 0);
             $delta = (int) ($_POST['delta'] ?? 0);
@@ -137,10 +148,11 @@ foreach (Database::all("SELECT category k, condition_type c, COUNT(*) n, COALESC
     $tabCnt[$r['k'] . '_' . $r['c']] = $r;
 }
 $edit = isset($_GET['edit']) ? Database::one('SELECT * FROM products WHERE id = ?', [(int) $_GET['edit']]) : null;
-$allProducts = Database::all('SELECT id, name, stock FROM products WHERE active = 1 ORDER BY name LIMIT 500');
+$allProducts = Database::all('SELECT id, name, brand, stock, condition_type, location FROM products WHERE active = 1 ORDER BY name, brand, condition_type LIMIT 2000');
 $v = fn (string $k, string $d = '') => e((string) ($edit[$k] ?? $d));
 ?>
-<section class="hero slim"><div><h1>Estoque</h1><p>Cadastre produtos, acompanhe quantidades e corrija diferencas com ajuste manual. Toda movimentacao fica registrada.</p></div></section>
+<section class="hero slim"><div><h1>Estoque</h1><p>Cadastre produtos, acompanhe quantidades e corrija diferencas com ajuste manual. Toda movimentacao fica registrada.</p></div><?php if (App\Auth::isAdmin()): ?><a class="btn ghost sm" href="<?= e(url('estoque', ['rodas_nomes' => 1])) ?>">Nomes das rodas (provador)</a><?php endif; ?></section>
+<?php if (!empty($_GET['rodas_nomes']) && App\Auth::isAdmin()) { require __DIR__ . '/_estoque_rodas_nomes.php'; return; } ?>
 
 <?php
 $cnt = ['novo' => ['pneu' => 0, 'roda' => 0], 'usado' => ['pneu' => 0, 'roda' => 0], 'atacado' => ['pneu' => 0, 'roda' => 0]];
@@ -187,7 +199,7 @@ foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock)
         <textarea name="description" placeholder="Descricao"><?= $v('description') ?></textarea>
         <div class="row c2"><input name="gtin" placeholder="GTIN / EAN" value="<?= $v('gtin') ?>"><input name="mpn" placeholder="MPN / cod. fabricante" value="<?= $v('mpn') ?>"></div>
         <input name="google_category" placeholder="Categoria Google (ex: Veiculos e pecas > Pecas)" value="<?= $v('google_category') ?>">
-        <div class="row c2"><input name="brand" placeholder="Marca" value="<?= $v('brand') ?>"><input name="model" placeholder="Modelo" value="<?= $v('model') ?>"></div>
+        <div class="row c2"><input name="brand" placeholder="Marca (ex.: PIRELLI)" list="p-brands" autocomplete="off" value="<?= $v('brand') ?>"><datalist id="p-brands"><?php foreach (Database::all("SELECT DISTINCT UPPER(TRIM(brand)) b FROM products WHERE COALESCE(TRIM(brand), '') <> '' ORDER BY b LIMIT 300") as $b): ?><option value="<?= e($b['b']) ?>"><?php endforeach; ?></datalist><input name="model" placeholder="Modelo" value="<?= $v('model') ?>"></div>
         <input name="compatible_cars" placeholder="Carros compativeis (separe por virgula)" value="<?= $v('compatible_cars') ?>">
         <div class="row c3"><input name="width" placeholder="Largura" value="<?= $v('width') ?>"><input name="profile" placeholder="Perfil" value="<?= $v('profile') ?>"><input name="rim" placeholder="Aro" value="<?= $v('rim') ?>"></div>
         </div>
@@ -231,7 +243,9 @@ foreach (Database::all("SELECT condition_type c, category k, COALESCE(SUM(stock)
       <h2>Ajuste de estoque</h2>
       <p class="sub">Use numero positivo para entrada e negativo para saida.</p>
       <div class="stack">
-        <select name="product_id" required aria-label="Produto"><option value="">Selecione o produto</option><?php foreach ($allProducts as $p): ?><option value="<?= (int) $p['id'] ?>"><?= e($p['name']) ?> (<?= (int) $p['stock'] ?>)</option><?php endforeach; ?></select>
+        <input type="search" id="adj-q" placeholder="Filtrar: medida, marca, aro..." aria-label="Filtrar produto" autocomplete="off">
+        <select name="product_id" id="adj-p" required aria-label="Produto"><option value="">Selecione o produto</option><?php foreach ($allProducts as $p): ?><option value="<?= (int) $p['id'] ?>"><?= e(product_label($p)) ?></option><?php endforeach; ?></select>
+        <script>(function () { const q = document.getElementById('adj-q'), s = document.getElementById('adj-p'); q.addEventListener('input', () => { const t = q.value.toUpperCase().trim().split(/\s+/); let first = null; [...s.options].forEach((o, i) => { if (!i) return; const ok = t.every((w) => o.text.toUpperCase().includes(w)); o.hidden = !ok; if (ok && !first) first = o; }); if (first && (s.selectedOptions[0] || {}).hidden !== false) s.value = first.value; }); })();</script>
         <input name="delta" type="number" placeholder="Variacao (ex: 4 ou -1)" required>
         <input name="reason" placeholder="Observacao">
         <button class="btn warn block" type="submit" style="font-size:14px;padding:12px">Aplicar ajuste</button>

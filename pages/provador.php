@@ -171,11 +171,16 @@ $rodasJs = array_map(fn ($r) => [
     'id' => (int) $r['id'], 'nome' => $r['name'], 'marca' => (string) $r['brand'], 'aro' => (int) digits((string) $r['rim']) ?: null,
     'preco' => (float) $r['price'], 'estoque' => (int) $r['stock'], 'cond' => $r['condition_type'], 'img' => $r['image_path'],
 ], $rodas);
+$linkRim = [];
+foreach (Database::all("SELECT rim_catalog_id k, SUM(stock) q, MIN(price) p FROM products WHERE active = 1 AND category = 'roda' AND rim_catalog_id IS NOT NULL GROUP BY rim_catalog_id") as $lr) {
+    $linkRim[(int) $lr['k']] = $lr;
+}
 // rodas do catalogo: fotos ja limpas que ficam no proprio sistema (public/rodas), aparecem primeiro na busca
 foreach (array_reverse(Database::all('SELECT * FROM rim_catalog WHERE active = 1 ORDER BY rim, name')) as $c) {
     array_unshift($rodasJs, [
         'id' => 'c' . $c['id'], 'nome' => $c['name'], 'marca' => (string) $c['brand'], 'aro' => (int) $c['rim'],
-        'preco' => null, 'estoque' => null, 'cond' => 'novo', 'img' => $c['path'], 'catalogo' => true,
+        'preco' => isset($linkRim[(int) $c['id']]) ? (float) $linkRim[(int) $c['id']]['p'] : null,
+        'estoque' => isset($linkRim[(int) $c['id']]) ? (int) $linkRim[(int) $c['id']]['q'] : null, 'cond' => 'novo', 'img' => $c['path'], 'catalogo' => true,
     ]);
 }
 ?>

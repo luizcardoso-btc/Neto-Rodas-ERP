@@ -131,3 +131,30 @@ function asset(string $file): string
     $path = dirname(__DIR__) . '/public/assets/' . $file;
     return 'assets/' . $file . '?v=' . (is_file($path) ? filemtime($path) : 1);
 }
+
+/**
+ * Nome do produto para listas de escolha: nome + marca (se nao estiver no nome) + condicao + local + estoque.
+ * Ex.: "205/55 R16 · PIRELLI · usado · estoque 8"
+ * @param array<string,mixed> $p
+ */
+function product_label(array $p, bool $withStock = true): string
+{
+    $name = (string) ($p['name'] ?? '');
+    $parts = [$name];
+    $brand = upper(trim((string) ($p['brand'] ?? '')));
+    if ($brand !== '' && !str_contains(upper($name), $brand)) {
+        $parts[] = $brand;
+    }
+    $cond = (string) ($p['condition_type'] ?? '');
+    if ($cond !== '' && $cond !== 'novo') {
+        $parts[] = $cond;
+    }
+    $loc = trim((string) ($p['location'] ?? ''));
+    if ($loc !== '') {
+        $parts[] = 'local ' . $loc;
+    }
+    if ($withStock) {
+        $parts[] = 'estoque ' . (int) ($p['stock'] ?? 0);
+    }
+    return implode(' · ', $parts);
+}

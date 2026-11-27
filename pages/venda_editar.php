@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_
 
 $customers = Database::all("SELECT id, CONCAT_WS(' ', first_name, last_name) name, phone FROM customers ORDER BY first_name, last_name");
 $sellers = Database::all('SELECT id, name FROM sellers ORDER BY name');
-$products = Database::all('SELECT id, name, stock, condition_type FROM products WHERE active = 1 OR id IN (SELECT product_id FROM sale_items WHERE sale_id = ' . (int) $saleId . ') ORDER BY name');
+$products = Database::all('SELECT id, name, brand, location, stock, condition_type FROM products WHERE active = 1 OR id IN (SELECT product_id FROM sale_items WHERE sale_id = ' . (int) $saleId . ') ORDER BY name');
 $items = Database::all('SELECT * FROM sale_items WHERE sale_id = ? ORDER BY id', [$saleId]);
 $pays = Database::all('SELECT * FROM sale_payments WHERE sale_id = ? ORDER BY id', [$saleId]);
 $due = Database::value('SELECT due_date FROM accounts_receivable WHERE sale_id = ? ORDER BY id LIMIT 1', [$saleId]);
@@ -118,7 +118,7 @@ $nfe = $posted ? !empty($posted['wants_nfe']) : (bool) $sale['wants_nfe'];
 <script src="<?= e(asset('cardfees.js')) ?>"></script>
 <script>
 (function () {
-  const PRODUCTS = <?= json_encode(array_map(fn ($p) => ['id' => (int) $p['id'], 'label' => $p['name'] . ($p['condition_type'] === 'usado' ? ' (usado)' : '') . ' - estoque ' . (int) $p['stock']], $products), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+  const PRODUCTS = <?= json_encode(array_map(fn ($p) => ['id' => (int) $p['id'], 'label' => product_label($p)], $products), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
   const ITEMS = <?= json_encode($itemRows, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
   const PAYS = <?= json_encode($payRows, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
   const CARD = <?= json_encode(['machines' => App\CardFees::machines(), 'rates' => App\CardFees::rateMap() ?: new stdClass()], JSON_HEX_TAG) ?>;

@@ -43,7 +43,7 @@ $tot = Loans::totals();
 $old = $_SESSION['loan_old'] ?? [];
 unset($_SESSION['loan_old']);
 $o = fn ($k, $d = '') => e((string) ($old[$k] ?? $d));
-$products = Database::all("SELECT id, name, stock, condition_type, category FROM products WHERE active = 1 AND category IN ('pneu','roda','parafuso') ORDER BY category, name");
+$products = Database::all("SELECT id, name, brand, location, stock, condition_type, category FROM products WHERE active = 1 AND category IN ('pneu','roda','parafuso') ORDER BY category, name");
 $sett = [];
 if ($rows) {
     foreach (Database::all('SELECT * FROM loan_settlements WHERE loan_id IN (' . implode(',', array_map(fn ($r) => (int) $r['id'], $rows)) . ') ORDER BY id') as $s) {
@@ -72,7 +72,7 @@ $condLabel = ['novo' => '', 'usado' => ' (USADO)', 'atacado' => ' (ATACADO)'];
       <label class="f" for="loan-product">Produto do estoque (opcional)</label>
       <select id="loan-product" name="product_id"><option value="">— Não está no estoque / descrever abaixo —</option>
         <?php $lastCat = ''; foreach ($products as $p): if ($p['category'] !== $lastCat): ?><?= $lastCat ? '</optgroup>' : '' ?><optgroup label="<?= e(ucfirst($p['category'])) ?>"><?php $lastCat = $p['category']; endif; ?>
-          <option value="<?= (int) $p['id'] ?>" <?= (string) ($old['product_id'] ?? '') === (string) $p['id'] ? 'selected' : '' ?>><?= e($p['name'] . ($condLabel[$p['condition_type']] ?? '')) ?> · estoque <?= (int) $p['stock'] ?></option>
+          <option value="<?= (int) $p['id'] ?>" <?= (string) ($old['product_id'] ?? '') === (string) $p['id'] ? 'selected' : '' ?>><?= e(product_label($p)) ?></option>
         <?php endforeach; ?><?= $lastCat ? '</optgroup>' : '' ?></select>
       <input name="description" placeholder="Descrição: medida, marca (ex.: 175/70 R14 PIRELLI)" value="<?= $o('description') ?>">
       <div class="row c2"><input name="quantity" type="number" min="1" required placeholder="Quantidade *" value="<?= $o('quantity') ?>"><input name="unit_value" inputmode="decimal" placeholder="Valor combinado por unidade (R$)" value="<?= $o('unit_value') ?>"></div>
