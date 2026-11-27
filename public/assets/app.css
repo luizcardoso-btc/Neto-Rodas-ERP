@@ -487,7 +487,8 @@ html.tv-on body{overflow:hidden}
 html.money-off .money-eye{background:#0a0a0a;color:#ffd21a;border-color:#0a0a0a}
 html.money-off .money-eye .eye-open{display:none}
 html.money-off .money-eye .eye-off{display:inline}
-html.money-off .mv{filter:blur(7px);user-select:none;transition:filter .2s}
+m-v{display:inline;font:inherit;color:inherit}
+html.money-off m-v{filter:blur(7px);user-select:none;transition:filter .2s}
 html.money-off .chart-box,html.money-off .money-blur{filter:blur(12px)}
 html.money-off .main input[inputmode=decimal]:not(:focus){color:transparent;text-shadow:0 0 8px rgba(0,0,0,.6)}
 @media(max-width:900px){.money-eye{top:auto;bottom:16px;right:16px}.money-eye span{display:none}}

@@ -47,12 +47,12 @@ $nav = array_filter(PAGES, fn ($k) => $k !== 'zerar' && ($k !== 'vendedores' || 
   var RX = /(-?\s?R\$\s?-?[\d.]+(?:,\d{1,2})?|-?[\d.]+,\d{1,2}\s?%|\b\d{1,3}(?:,\d)?\s?%)/g;
   function wrap(node) {
     var w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, { acceptNode: function (t) {
-      var p = t.parentNode; if (!p || p.closest('script,style,textarea,option,select,.mv,.money-eye')) return NodeFilter.FILTER_REJECT;
+      var p = t.parentNode; if (!p || p.closest('script,style,textarea,option,select,m-v,.money-eye')) return NodeFilter.FILTER_REJECT;
       RX.lastIndex = 0; return RX.test(t.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; } });
     var list = []; while (w.nextNode()) list.push(w.currentNode);
     list.forEach(function (t) {
       var f = document.createDocumentFragment(), s = t.nodeValue, last = 0; RX.lastIndex = 0; var m;
-      while ((m = RX.exec(s))) { if (m.index > last) f.appendChild(document.createTextNode(s.slice(last, m.index))); var sp = document.createElement('span'); sp.className = 'mv'; sp.textContent = m[0]; f.appendChild(sp); last = m.index + m[0].length; }
+      while ((m = RX.exec(s))) { if (m.index > last) f.appendChild(document.createTextNode(s.slice(last, m.index))); var sp = document.createElement('m-v'); sp.textContent = m[0]; f.appendChild(sp); last = m.index + m[0].length; }
       if (last < s.length) f.appendChild(document.createTextNode(s.slice(last)));
       t.parentNode.replaceChild(f, t);
     });
