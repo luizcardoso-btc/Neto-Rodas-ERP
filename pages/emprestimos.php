@@ -109,7 +109,7 @@ $condLabel = ['novo' => '', 'usado' => ' (USADO)', 'atacado' => ' (ATACADO)'];
           <?= $r['notes'] ? '<br><span class="small">' . e($r['notes']) . '</span>' : '' ?></p>
         <?php if ($r['status'] === 'aberto'): ?><p class="small"><b>Falta acertar: <?= (int) $r['pending'] ?></b> de <?= (int) $r['quantity'] ?></p><?php endif; ?>
         <?php foreach ($sett[(int) $r['id']] ?? [] as $s): ?>
-          <div class="small muted loan-ev">✓ <?= e(fmt_date($s['settle_date'])) ?>: <?= $s['kind'] === 'devolucao' ? ((int) $s['quantity'] . ' devolvido(s)') : ((int) $s['quantity'] . ' pago(s), ' . money($s['amount']) . ($s['sale_id'] ? ' · <a href="' . e(url('vendas', ['id' => $s['sale_id']])) . '">venda #' . (int) $s['sale_id'] . '</a>' : ' · conta paga no Financeiro')) ?>
+          <div class="small muted loan-ev">✓ <?= e(fmt_date($s['settle_date'])) ?>: <?= $s['kind'] === 'devolucao' ? ((int) $s['quantity'] . ' devolvido(s)' . ($s['returned_desc'] ? ' · <b>outro pneu: ' . e($s['returned_desc']) . '</b>' : '')) : ((int) $s['quantity'] . ' pago(s), ' . money($s['amount']) . ($s['sale_id'] ? ' · <a href="' . e(url('vendas', ['id' => $s['sale_id']])) . '">venda #' . (int) $s['sale_id'] . '</a>' : ' · conta paga no Financeiro')) ?>
             <?php if (App\Auth::isAdmin()): ?><form method="post" style="display:inline" onsubmit="return confirm('Desfazer esta baixa?<?= $s['sale_id'] ? ' A venda gerada por ela sera apagada.' : '' ?>')"><?= App\Csrf::field() ?><input type="hidden" name="action" value="loan_undo"><input type="hidden" name="sid" value="<?= (int) $s['id'] ?>"><button class="linklike danger-t" type="submit">desfazer</button></form><?php endif; ?></div>
         <?php endforeach; ?>
         <?php if ($r['status'] === 'aberto'): ?>
@@ -122,6 +122,15 @@ $condLabel = ['novo' => '', 'usado' => ' (USADO)', 'atacado' => ' (ATACADO)'];
             <div class="row c2 pay-only" hidden>
               <input name="amount" class="settle-amount" data-unit="<?= $r['unit_value'] !== null ? e((string) $r['unit_value']) : '' ?>" inputmode="decimal" placeholder="Valor total pago (R$)" value="<?= $r['unit_value'] !== null ? e(number_format((float) $r['unit_value'] * (int) $r['pending'], 2, ',', '')) : '' ?>">
               <?php if (!$isIn): ?><select name="method"><option value="pix">PIX</option><option value="dinheiro">Dinheiro</option><option value="prazo">A receber</option></select><?php endif; ?>
+            </div>
+            <div class="ret-only">
+              <label class="chk small"><input type="checkbox" name="other" value="1" class="ret-other"> <?= $isIn ? 'Devolvemos outro pneu (outra marca ou medida)' : 'O parceiro devolveu outro pneu (outra marca ou medida)' ?></label>
+              <div class="ret-box stack" hidden style="margin-top:8px">
+                <select name="ret_product_id" aria-label="Pneu do estoque que voltou"><option value=""><?= $isIn ? 'Escolha o pneu que saiu do estoque' : '— escolher do estoque, ou descrever abaixo —' ?></option>
+                  <?php foreach ($products as $p): if ($p['category'] !== 'pneu') continue; ?><option value="<?= (int) $p['id'] ?>"><?= e(product_label($p)) ?></option><?php endforeach; ?></select>
+                <?php if (!$isIn): ?><div class="row c3"><input name="ret_size" placeholder="Medida (205/55 R16)" aria-label="Medida do pneu devolvido"><input name="ret_brand" placeholder="Marca" list="ret-brands" aria-label="Marca do pneu devolvido" style="text-transform:uppercase"><select name="ret_cond" aria-label="Condição"><option value="novo">Novo</option><option value="usado">Usado</option></select></div>
+                <p class="small muted" style="margin:0">Se não estiver no estoque, informe medida e marca: ele entra no estoque já com a referência e a marca.</p><?php endif; ?>
+              </div>
             </div>
             <div class="row c2"><label class="birth"><span>Data</span><input type="date" name="settle_date" value="<?= date('Y-m-d') ?>"></label><input name="notes" placeholder="Observação"></div>
             <button class="btn green" type="submit">Confirmar baixa</button>
@@ -152,7 +161,9 @@ $condLabel = ['novo' => '', 'usado' => ' (USADO)', 'atacado' => ' (ATACADO)'];
 <script>
 document.querySelectorAll('.settle-kind').forEach(function (s) {
   var f = s.form.querySelector('.pay-only');
-  var sync = function () { f.hidden = s.value !== 'pagamento'; f.querySelector('input').required = s.value === 'pagamento'; };
+  var r = s.form.querySelector('.ret-only'), ro = s.form.querySelector('.ret-other'), rb = s.form.querySelector('.ret-box');
+  var sync = function () { f.hidden = s.value !== 'pagamento'; f.querySelector('input').required = s.value === 'pagamento'; r.hidden = s.value === 'pagamento'; rb.hidden = !ro.checked || r.hidden; };
+  ro.addEventListener('change', sync);
   s.addEventListener('change', sync); sync();
   var q = s.form.querySelector('input[name=quantity]'), a = s.form.querySelector('.settle-amount');
   if (a && a.dataset.unit) q.addEventListener('input', function () { a.value = ((parseInt(q.value, 10) || 0) * parseFloat(a.dataset.unit)).toFixed(2).replace('.', ','); });
@@ -163,3 +174,4 @@ document.querySelectorAll('.settle-kind').forEach(function (s) {
   f.addEventListener('change', sync); sync();
 })();
 </script>
+<datalist id="ret-brands"><?php foreach (Database::all("SELECT DISTINCT UPPER(TRIM(brand)) b FROM products WHERE category = 'pneu' AND COALESCE(TRIM(brand), '') <> '' ORDER BY b LIMIT 300") as $b): ?><option value="<?= e($b['b']) ?>"><?php endforeach; ?></datalist>

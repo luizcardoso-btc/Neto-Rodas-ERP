@@ -102,9 +102,12 @@ final class Loans
         $pdo->beginTransaction();
         try {
             if ($kind === 'devolucao') {
-                if ($loan['stock_moved'] && $loan['product_id']) {
-                    self::stock((int) $loan['product_id'], $loan['direction'] === 'out' ? $qty : -$qty,
-                        ($loan['direction'] === 'out' ? 'Devolvido por ' : 'Devolvido para ') . $partner . " (emprestimo #$loanId)");
+                // Devolveu outro pneu (outra marca/medida)? O estoque mexe no pneu que voltou (ou saiu) de fato.
+                [$retPid, $retDesc] = self::returnedProduct($d, $loan, $qty);
+                $pid = $retPid ?: ($loan['stock_moved'] ? (int) $loan['product_id'] : 0);
+                if ($pid) {
+                    self::stock($pid, $loan['direction'] === 'out' ? $qty : -$qty,
+                        ($loan['direction'] === 'out' ? 'Devolvido por ' : 'Devolvido para ') . $partner . " (emprestimo #$loanId)" . ($retDesc ? ' - outro pneu: ' . $retDesc : ''));
                 }
             } elseif ($loan['direction'] === 'out') {
                 // Parceiro pagou: vira venda de atacado (receita + custo). O pneu ja tinha saido do estoque no emprestimo:
@@ -133,8 +136,8 @@ final class Loans
                 );
             }
             Database::insert(
-                'INSERT INTO loan_settlements (loan_id, kind, quantity, amount, method, sale_id, payable_id, settle_date, notes) VALUES (?,?,?,?,?,?,?,?,?)',
-                [$loanId, $kind, $qty, $amount, $method, $saleId, $payableId, $date, mb_substr(upper((string) ($d['notes'] ?? '')), 0, 255) ?: null]
+                'INSERT INTO loan_settlements (loan_id, kind, quantity, amount, method, sale_id, payable_id, returned_product_id, returned_desc, settle_date, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                [$loanId, $kind, $qty, $amount, $method, $saleId, $payableId, $retPid ?? null, $retDesc ?? null, $date, mb_substr(upper((string) ($d['notes'] ?? '')), 0, 255) ?: null]
             );
             if ($qty === $loan['pending']) {
                 Database::run("UPDATE loans SET status = 'fechado' WHERE id = ?", [$loanId]);
@@ -189,6 +192,10 @@ final class Loans
     public static function undoSettlement(int $settlementId): void
     {
         $s = Database::one('SELECT s.*, l.direction, l.stock_moved, l.product_id FROM loan_settlements s JOIN loans l ON l.id = s.loan_id WHERE s.id = ?', [$settlementId]);
+        if ($s && $s['returned_product_id']) { // devolucao com outro pneu: desfaz no pneu que voltou
+            $s['product_id'] = $s['returned_product_id'];
+            $s['stock_moved'] = 1;
+        }
         if (!$s) {
             return;
         }
@@ -297,6 +304,55 @@ final class Loans
              FROM loans l WHERE status = 'aberto'"
         );
         return ['owe' => (int) $r['owe'], 'owed' => (int) $r['owed'], 'late' => (int) $r['late']];
+    }
+
+    /**
+     * Pneu que voltou (ou que devolvemos) quando e diferente do emprestado: escolhido do estoque
+     * ou descrito (medida + marca), que entra no estoque com a referencia e a marca.
+     * @return array{0:?int,1:?string}
+     */
+    private static function returnedProduct(array $d, array $loan, int $qty): array
+    {
+        if (empty($d['other'])) {
+            return [null, null];
+        }
+        $out = $loan['direction'] === 'out';
+        if (!empty($d['ret_product_id'])) {
+            $p = Database::one('SELECT id, name, brand, stock, condition_type FROM products WHERE id = ? AND active = 1', [(int) $d['ret_product_id']]);
+            if (!$p) {
+                throw new DomainException('Produto devolvido nao encontrado no estoque.');
+            }
+            if (!$out && (int) $p['stock'] < $qty) {
+                throw new DomainException(sprintf('Estoque insuficiente de "%s": tem %d, devolvendo %d.', $p['name'], $p['stock'], $qty));
+            }
+            return [(int) $p['id'], product_label($p, false)];
+        }
+        $size = strtoupper(trim((string) ($d['ret_size'] ?? '')));
+        $brand = upper(trim((string) ($d['ret_brand'] ?? '')));
+        if (!preg_match('#^(\d{3})\s*/\s*(\d{2})\s*R?\s*(\d{2})$#', $size, $m) || $brand === '') {
+            throw new DomainException('Pneu devolvido diferente: escolha do estoque ou informe a medida (ex.: 205/55 R16) e a marca.');
+        }
+        if (!$out) {
+            throw new DomainException('Para devolver outro pneu ao parceiro, escolha o pneu que saiu do nosso estoque.');
+        }
+        $cond = ($d['ret_cond'] ?? '') === 'usado' ? 'usado' : 'novo';
+        $name = "$m[1]/$m[2] R$m[3]";
+        $desc = $name . ' ' . $brand . ($cond === 'usado' ? ' (usado)' : '');
+        if (!$loan['stock_moved']) {
+            return [null, $desc]; // o emprestado nao tinha saido do estoque: so registra o que voltou
+        }
+        $pid = Database::value(
+            "SELECT id FROM products WHERE active = 1 AND category = 'pneu' AND width = ? AND profile = ? AND rim = ? AND UPPER(TRIM(brand)) = ? AND condition_type = ? ORDER BY id LIMIT 1",
+            [$m[1], $m[2], $m[3], $brand, $cond]
+        );
+        if (!$pid) {
+            $ref = $loan['product_id'] ? Database::one('SELECT cost_price, price FROM products WHERE id = ?', [$loan['product_id']]) : null;
+            $pid = Database::insert(
+                "INSERT INTO products (name, category, condition_type, brand, width, profile, rim, cost_price, price, stock) VALUES (?, 'pneu', ?, ?, ?, ?, ?, ?, ?, 0)",
+                [$name, $cond, $brand, $m[1], $m[2], $m[3], $ref['cost_price'] ?? 0, $ref['price'] ?? 0]
+            );
+        }
+        return [(int) $pid, $desc];
     }
 
     private static function stock(int $pid, int $delta, string $reason): void

@@ -133,4 +133,36 @@ final class LoansTest extends TestCase
         $this->assertSame(0, (int) Database::value('SELECT COUNT(*) FROM accounts_payable'));
         $this->assertSame('aberto', Loans::find($id)['status']);
     }
+
+    public function testPartnerReturnsAnotherBrandEntersStockWithReferenceAndBrand(): void
+    {
+        $id = Loans::create(['direction' => 'out', 'partner' => 'tecsom', 'product_id' => $this->pid, 'quantity' => 4]);
+        $this->assertSame(6, $this->stock());
+        Loans::settle($id, ['kind' => 'devolucao', 'quantity' => 4, 'other' => '1', 'ret_size' => '175/70r14', 'ret_brand' => 'pirelli']);
+        $this->assertSame(6, $this->stock()); // o original nao volta
+        $new = Database::one("SELECT * FROM products WHERE brand = 'PIRELLI'");
+        $this->assertSame('175/70 R14', $new['name']);
+        $this->assertSame(4, (int) $new['stock']);
+        $this->assertSame('175', $new['width']);
+        $s = Database::one('SELECT * FROM loan_settlements WHERE loan_id = ?', [$id]);
+        $this->assertSame((int) $new['id'], (int) $s['returned_product_id']);
+        $this->assertStringContainsString('PIRELLI', $s['returned_desc']);
+        $this->assertSame('fechado', Database::value('SELECT status FROM loans WHERE id = ?', [$id]));
+        // desfazer tira do pneu que voltou
+        Loans::undoSettlement((int) $s['id']);
+        $this->assertSame(0, (int) Database::value('SELECT stock FROM products WHERE id = ?', [$new['id']]));
+        // de novo, agora escolhendo um produto que ja existe no estoque
+        Loans::settle($id, ['kind' => 'devolucao', 'quantity' => 2, 'other' => '1', 'ret_product_id' => $new['id']]);
+        $this->assertSame(2, (int) Database::value('SELECT stock FROM products WHERE id = ?', [$new['id']]));
+    }
+
+    public function testWeReturnAnotherTireFromOurStock(): void
+    {
+        $other = Database::insert("INSERT INTO products (name, brand, category, cost_price, price, stock) VALUES ('175/70 R14', 'GOODYEAR', 'pneu', 200, 300, 5)");
+        $id = Loans::create(['direction' => 'in', 'partner' => 'kk', 'product_id' => $this->pid, 'quantity' => 2, 'add_stock' => 1]);
+        $this->assertSame(12, $this->stock());
+        Loans::settle($id, ['kind' => 'devolucao', 'quantity' => 2, 'other' => '1', 'ret_product_id' => $other]);
+        $this->assertSame(12, $this->stock());
+        $this->assertSame(3, (int) Database::value('SELECT stock FROM products WHERE id = ?', [$other]));
+    }
 }
