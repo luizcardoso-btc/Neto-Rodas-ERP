@@ -481,3 +481,13 @@ html.nav-off .main{padding-left:72px}
 .pv-tvbar button.sair{width:auto;padding:0 14px;font-size:13px;font-weight:700}
 html.tv-on body{overflow:hidden}
 .pv-tools .chip.tv{border-color:#ffd21a;color:#ffd21a}
+/* olho: ocultar valores financeiros */
+.money-eye{position:fixed;top:14px;right:18px;z-index:60;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:12px;border:1px solid #e5e7eb;background:#fff;color:#111;font:inherit;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+.money-eye .eye-off{display:none}
+html.money-off .money-eye{background:#0a0a0a;color:#ffd21a;border-color:#0a0a0a}
+html.money-off .money-eye .eye-open{display:none}
+html.money-off .money-eye .eye-off{display:inline}
+html.money-off .mv{filter:blur(7px);user-select:none;transition:filter .2s}
+html.money-off .chart-box,html.money-off .money-blur{filter:blur(12px)}
+html.money-off .main input[inputmode=decimal]:not(:focus){color:transparent;text-shadow:0 0 8px rgba(0,0,0,.6)}
+@media(max-width:900px){.money-eye{top:auto;bottom:16px;right:16px}.money-eye span{display:none}}
